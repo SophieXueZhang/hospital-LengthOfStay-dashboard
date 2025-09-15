@@ -363,28 +363,56 @@ st.markdown("""
         cursor: not-allowed;
     }
     
-    /* Move sidebar to right side */
+    /* Move sidebar to right side with proper layout */
     .css-1d391kg, .css-1cypcdb, .css-17lntkn, 
     [data-testid="stSidebar"], 
     .css-1aumxhk, .css-1y0tads, .css-1lcbmhc,
     section[data-testid="stSidebar"] {
-        position: fixed !important;
-        right: 0 !important;
-        left: auto !important;
-        top: 0 !important;
-        height: 100vh !important;
-        z-index: 999 !important;
-        transform: translateX(0) !important;
+        position: static !important;
+        order: 2 !important;
+        flex-shrink: 0 !important;
+        width: 320px !important;
+        max-width: 320px !important;
+        min-width: 320px !important;
     }
     
-    /* Adjust main content area when sidebar is on right */
+    /* Ensure proper flex layout for main app container */
+    .css-1rs6os, .css-17ziqus, [data-testid="stAppViewContainer"] > .main {
+        display: flex !important;
+        flex-direction: row !important;
+    }
+    
+    /* Adjust main content area */
     .main .block-container {
+        flex: 1 !important;
         padding-left: 2rem !important;
-        padding-right: 22rem !important;
+        padding-right: 2rem !important;
+        max-width: calc(100% - 340px) !important;
     }
     
-    /* Responsive adjustments for mobile */
-    @media (max-width: 768px) {
+    /* Responsive adjustments for mobile and tablets */
+    @media (max-width: 1024px) {
+        /* Stack sidebar below content on smaller screens */
+        .css-1rs6os, .css-17ziqus, [data-testid="stAppViewContainer"] > .main {
+            flex-direction: column !important;
+        }
+        
+        .css-1d391kg, .css-1cypcdb, .css-17lntkn, 
+        [data-testid="stSidebar"], 
+        .css-1aumxhk, .css-1y0tads, .css-1lcbmhc,
+        section[data-testid="stSidebar"] {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 100% !important;
+            order: 1 !important;
+        }
+        
+        .main .block-container {
+            max-width: 100% !important;
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+        }
+        
         .chat-button {
             bottom: 1rem !important;
             right: 1rem !important;
