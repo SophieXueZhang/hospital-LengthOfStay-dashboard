@@ -32,7 +32,7 @@ COLORS = {
 # Page config
 st.set_page_config(
     page_title="Hospital Management Dashboard",
-    page_icon="⚕️",
+    page_icon="▌",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -54,9 +54,9 @@ st.markdown("""
     /* Header styling */
     .main-header {
         background: linear-gradient(135deg, #2E5266 0%, #6C7B7F 100%);
-        padding: 2rem 0;
-        margin: -1rem -1rem 2rem -1rem;
-        border-radius: 0 0 1rem 1rem;
+        padding: 2rem 1rem;
+        margin: 0 0 2rem 0;
+        border-radius: 1rem;
         color: white;
         text-align: center;
     }
@@ -363,75 +363,15 @@ st.markdown("""
         cursor: not-allowed;
     }
     
-    /* Move sidebar to right side with proper layout */
-    .css-1d391kg, .css-1cypcdb, .css-17lntkn, 
-    [data-testid="stSidebar"], 
-    .css-1aumxhk, .css-1y0tads, .css-1lcbmhc,
-    section[data-testid="stSidebar"] {
-        position: static !important;
-        order: 2 !important;
-        flex-shrink: 0 !important;
-        width: 320px !important;
-        max-width: 320px !important;
-        min-width: 320px !important;
-    }
+    /* Simplified layout - keep default Streamlit layout */
     
-    /* Ensure proper flex layout for main app container */
-    .css-1rs6os, .css-17ziqus, [data-testid="stAppViewContainer"] > .main {
-        display: flex !important;
-        flex-direction: row !important;
-    }
-    
-    /* Adjust main content area */
-    .main .block-container {
-        flex: 1 !important;
-        padding-left: 2rem !important;
-        padding-right: 2rem !important;
-        max-width: calc(100% - 340px) !important;
-    }
-    
-    /* Responsive adjustments for mobile and tablets */
-    @media (max-width: 1024px) {
-        /* Stack sidebar below content on smaller screens */
-        .css-1rs6os, .css-17ziqus, [data-testid="stAppViewContainer"] > .main {
-            flex-direction: column !important;
+    /* Keep responsive design simple */
+    @media (max-width: 768px) {
+        .main-title {
+            font-size: 1.8rem;
         }
-        
-        .css-1d391kg, .css-1cypcdb, .css-17lntkn, 
-        [data-testid="stSidebar"], 
-        .css-1aumxhk, .css-1y0tads, .css-1lcbmhc,
-        section[data-testid="stSidebar"] {
-            width: 100% !important;
-            max-width: 100% !important;
-            min-width: 100% !important;
-            order: 1 !important;
-        }
-        
-        .main .block-container {
-            max-width: 100% !important;
-            padding-left: 1rem !important;
-            padding-right: 1rem !important;
-        }
-        
-        .chat-button {
-            bottom: 1rem !important;
-            right: 1rem !important;
-            width: 50px;
-            height: 50px;
-        }
-        
-        .chat-modal {
-            bottom: 4rem !important;
-            right: 1rem !important;
-            left: 1rem !important;
-            width: auto;
-            height: 400px;
-        }
-        
-        /* Mobile sidebar adjustments */
-        .main .block-container {
-            padding-left: 1rem !important;
-            padding-right: 1rem !important;
+        .main-subtitle {
+            font-size: 0.9rem;
         }
     }
 </style>
@@ -506,7 +446,7 @@ def create_chart_template():
     return template
 
 def show_patient_detail(patient_id, df):
-    """Show detailed patient information"""
+    """Show detailed patient information with comprehensive 2-column layout"""
     patient = df[df['eid'] == patient_id].iloc[0]
     
     # Back button
@@ -518,73 +458,228 @@ def show_patient_detail(patient_id, df):
     # Patient header
     st.markdown(f"""
     <div class="main-header">
-        <div class="main-title">👤 Patient Details: {patient['full_name']}</div>
+        <div class="main-title">▌ Patient Details: {patient['full_name']}</div>
         <div class="main-subtitle">Comprehensive Medical Record</div>
     </div>
     """, unsafe_allow_html=True)
     
-    # Basic information
-    col1, col2, col3 = st.columns(3)
+    # Health Status Overview (Full width, 4 metrics)
+    st.markdown("### Health Status Overview")
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         st.metric("Age Group", patient['age_group'])
-        st.metric("Gender", patient['gender'])
         
     with col2:
         st.metric("Department", patient['facid'])
-        st.metric("Length of Stay", f"{patient['lengthofstay']} days")
         
     with col3:
-        st.metric("Risk Count", patient['rcount'])
-        st.metric("Readmission", "Yes" if patient['readmit_flag'] == 1 else "No")
+        st.metric("Length of Stay", f"{patient['lengthofstay']} days")
+        
+    with col4:
+        # Determine overall risk status
+        risk_status = "High Risk" if patient['risk_level'] == 'High Risk' else "Standard Risk"
+        risk_indicator = "●" if risk_status == "High Risk" else "○"
+        st.metric("Risk Status", f"{risk_indicator} {risk_status}")
     
-    # Medical conditions
-    st.markdown("### 🏥 Medical Conditions")
+    st.markdown("---")
+    
+    # Single column layout for detailed information
+    # Risk Assessment
+    st.markdown("### Risk Assessment")
+    risk_factors = []
+    
+    # Analyze key risk factors
+    if patient['lengthofstay'] > df['lengthofstay'].quantile(0.75):
+        risk_factors.append("Extended length of stay")
+    if patient['readmit_flag'] == 1:
+        risk_factors.append("Previous readmission")
+    if patient['age_at_admission'] > 65:
+        risk_factors.append("Advanced age")
+    if patient['creatinine'] > 1.2:
+        risk_factors.append("Elevated creatinine")
+    if patient['glucose'] > 140:
+        risk_factors.append("Elevated glucose")
+    if patient['hematocrit'] < 12 or patient['hematocrit'] > 16:
+        risk_factors.append("Abnormal hematocrit")
+    
+    if risk_factors:
+        for factor in risk_factors:
+            st.write(f"● {factor}")
+    else:
+        st.write("○ No significant risk factors identified")
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Medical Conditions
+    st.markdown("### Medical Conditions")
     conditions = []
+    condition_names = {
+        'dialysisrenalendstage': 'End-stage renal disease',
+        'asthma': 'Asthma',
+        'irondef': 'Iron deficiency',
+        'pneum': 'Pneumonia',
+        'substancedependence': 'Substance dependence',
+        'psychologicaldisordermajor': 'Major psychological disorder',
+        'depress': 'Depression',
+        'psychother': 'Requiring psychotherapy',
+        'fibrosisandother': 'Fibrosis and related conditions',
+        'malnutrition': 'Malnutrition'
+    }
+    
     medical_cols = ['dialysisrenalendstage', 'asthma', 'irondef', 'pneum', 'substancedependence', 
                    'psychologicaldisordermajor', 'depress', 'psychother', 'fibrosisandother', 'malnutrition']
     
     for col in medical_cols:
         if patient[col] == 1:
-            conditions.append(col.replace('_', ' ').title())
+            conditions.append(condition_names.get(col, col.replace('_', ' ').title()))
     
     if conditions:
         for condition in conditions:
-            st.write(f"• {condition}")
+            st.write(f"● {condition}")
     else:
-        st.write("No recorded medical conditions")
+        st.write("○ No recorded medical conditions")
     
-    # Lab results
-    st.markdown("### 🔬 Laboratory Results")
-    lab_col1, lab_col2 = st.columns(2)
+    st.markdown("<br>", unsafe_allow_html=True)
     
-    with lab_col1:
-        st.metric("Hemoglobin", f"{patient['hemo']:.1f}")
-        st.metric("Hematocrit", f"{patient['hematocrit']:.1f}")
-        st.metric("Neutrophils", f"{patient['neutrophils']:.1f}")
-        st.metric("Sodium", f"{patient['sodium']:.1f}")
-        
-    with lab_col2:
-        st.metric("Glucose", f"{patient['glucose']:.1f}")
-        st.metric("Blood Urea Nitrogen", f"{patient['bloodureanitro']:.1f}")
-        st.metric("Creatinine", f"{patient['creatinine']:.3f}")
-        st.metric("BMI", f"{patient['bmi']:.1f}")
-    
-    # Vital signs
-    st.markdown("### 💓 Vital Signs")
+    # Vital Signs
+    st.markdown("### Vital Signs")
     vital_col1, vital_col2 = st.columns(2)
     
     with vital_col1:
-        st.metric("Pulse", f"{patient['pulse']} bpm")
+        pulse_status = "Normal" if 60 <= patient['pulse'] <= 100 else "Abnormal"
+        st.metric("Pulse", f"{patient['pulse']} bpm", pulse_status)
         
     with vital_col2:
-        st.metric("Respiration", f"{patient['respiration']} /min")
+        resp_status = "Normal" if 12 <= patient['respiration'] <= 20 else "Abnormal"
+        st.metric("Respiration", f"{patient['respiration']} /min", resp_status)
     
-    # Timeline
-    st.markdown("### 📅 Timeline")
-    st.write(f"**Admission Date:** {patient['vdate'].strftime('%Y-%m-%d')}")
-    st.write(f"**Discharge Date:** {patient['discharged'].strftime('%Y-%m-%d')}")
-    st.write(f"**Date of Birth:** {patient['Date_of_Birth'].strftime('%Y-%m-%d')}")
+    # BMI analysis (moved out of columns for single column layout)
+    st.markdown("### BMI Assessment")
+    bmi = patient['bmi']
+    if bmi < 18.5:
+        bmi_status = "Underweight"
+    elif 18.5 <= bmi < 25:
+        bmi_status = "Normal"
+    elif 25 <= bmi < 30:
+        bmi_status = "Overweight"
+    else:
+        bmi_status = "Obese"
+    
+    st.metric("BMI", f"{bmi:.1f}", bmi_status)
+    
+    # Laboratory Results with interpretations
+    st.markdown("### Laboratory Results")
+    
+    # Hematocrit
+    hematocrit = patient['hematocrit']
+    hematocrit_normal = 12 <= hematocrit <= 16
+    hematocrit_color = "○" if hematocrit_normal else "●"
+    st.metric("Hematocrit", f"{hematocrit:.1f} g/dL", 
+             f"{hematocrit_color} {'Normal' if hematocrit_normal else 'Abnormal'}")
+        
+    # Creatinine
+    creatinine = patient['creatinine']
+    creatinine_normal = 0.6 <= creatinine <= 1.2
+    creatinine_color = "○" if creatinine_normal else "●"
+    st.metric("Creatinine", f"{creatinine:.3f} mg/dL",
+             f"{creatinine_color} {'Normal' if creatinine_normal else 'Abnormal'}")
+        
+    # Glucose
+    glucose = patient['glucose']
+    glucose_normal = 70 <= glucose <= 140
+    glucose_color = "○" if glucose_normal else "●"
+    st.metric("Glucose", f"{glucose:.1f} mg/dL",
+             f"{glucose_color} {'Normal' if glucose_normal else 'Abnormal'}")
+        
+    # Other lab values
+    st.metric("Neutrophils", f"{patient['neutrophils']:.1f}%")
+    st.metric("Sodium", f"{patient['sodium']:.1f} mEq/L")
+    st.metric("Blood Urea Nitrogen", f"{patient['bloodureanitro']:.1f} mg/dL")
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Care Recommendations
+    st.markdown("### Care Recommendations")
+    recommendations = []
+    
+    # Generate recommendations based on data
+    if patient['lengthofstay'] > 10:
+        recommendations.append("Monitor for complications due to extended stay")
+    if creatinine > 1.2:
+        recommendations.append("Nephrology consultation recommended")
+    if glucose > 140:
+        recommendations.append("Diabetes management and monitoring")
+    if hematocrit < 12:
+        recommendations.append("Investigate and treat anemia")
+    if patient['readmit_flag'] == 1:
+        recommendations.append("Enhanced discharge planning to prevent readmission")
+    if any(patient[col] == 1 for col in ['depress', 'psychologicaldisordermajor']):
+        recommendations.append("Mental health support and monitoring")
+    if patient['malnutrition'] == 1:
+        recommendations.append("Nutritional assessment and intervention")
+    
+    if recommendations:
+        for rec in recommendations:
+            st.write(f"▸ {rec}")
+    else:
+        st.write("○ Continue standard care protocols")
+    
+    # Bottom full width sections
+    st.markdown("---")
+    
+    # Three-column layout for bottom sections
+    bottom_col1, bottom_col2, bottom_col3 = st.columns(3)
+    
+    with bottom_col1:
+        # Follow-up Schedule
+        st.markdown("### Follow-up Schedule")
+        import datetime
+        admit_date = patient['vdate']
+        discharge_date = patient['discharged']
+        
+        # Calculate follow-up dates based on risk level
+        if patient['risk_level'] == 'High Risk':
+            followup_days = 7
+        else:
+            followup_days = 30
+            
+        followup_date = discharge_date + pd.Timedelta(days=followup_days)
+        st.write(f"**Next appointment:** {followup_date.strftime('%Y-%m-%d')}")
+        st.write(f"**Appointment type:** {'High-priority' if patient['risk_level'] == 'High Risk' else 'Routine'} follow-up")
+        
+    with bottom_col2:
+        # Timeline
+        st.markdown("### Care Timeline")
+        st.write(f"**Date of Birth:** {patient['Date_of_Birth'].strftime('%Y-%m-%d')}")
+        st.write(f"**Age at admission:** {patient['age_at_admission']:.1f} years")
+        st.write(f"**Admission:** {patient['vdate'].strftime('%Y-%m-%d')}")
+        st.write(f"**Discharge:** {patient['discharged'].strftime('%Y-%m-%d')}")
+        st.write(f"**Gender:** {patient['gender']}")
+        
+    with bottom_col3:
+        # Emergency Information
+        st.markdown("### Emergency Information")
+        
+        emergency_indicators = []
+        if creatinine > 2.0:
+            emergency_indicators.append("Severe kidney dysfunction")
+        if glucose > 300:
+            emergency_indicators.append("Severe hyperglycemia")
+        if patient['pulse'] > 120 or patient['pulse'] < 50:
+            emergency_indicators.append("Abnormal heart rate")
+        if hematocrit < 8:
+            emergency_indicators.append("Severe anemia")
+            
+        if emergency_indicators:
+            st.write("**Alert conditions:**")
+            for indicator in emergency_indicators:
+                st.write(f"● {indicator}")
+        else:
+            st.write("○ No immediate emergency indicators")
+            
+        st.write(f"**Risk count:** {patient['rcount']}")
+        st.write(f"**Priority level:** {'High' if patient['risk_level'] == 'High Risk' else 'Standard'}")
 
 def main():
     # Initialize session state
@@ -604,7 +699,7 @@ def main():
     # Header
     st.markdown("""
     <div class="main-header">
-        <div class="main-title">⚕️ Hospital Management Dashboard</div>
+        <div class="main-title">▌ Hospital Management Dashboard</div>
         <div class="main-subtitle">Analytics & Performance Monitoring</div>
     </div>
     """, unsafe_allow_html=True)
@@ -655,20 +750,32 @@ def main():
         # If only one date is selected, use it as both start and end
         start_date = end_date = date_range if not isinstance(date_range, (list, tuple)) else date_range[0]
     
-    # Apply filters
-    mask = (
-        (df['vdate'].dt.date >= start_date) &
-        (df['vdate'].dt.date <= end_date) &
-        (df['gender'].isin(gender_options)) &
-        (df['facid'].isin(dept_options)) &
-        (df['age_group'].isin(age_options)) &
-        (df['risk_level'].isin(risk_options))
-    )
-    filtered_df = df[mask]
-    
-    if filtered_df.empty:
-        st.warning("No data available with current filters. Please adjust your selection.")
-        return
+    # Apply filters with error handling
+    try:
+        mask = (
+            (df['vdate'].dt.date >= start_date) &
+            (df['vdate'].dt.date <= end_date)
+        )
+        
+        if gender_options:
+            mask = mask & (df['gender'].isin(gender_options))
+        if dept_options:
+            mask = mask & (df['facid'].isin(dept_options))
+        if age_options:
+            mask = mask & (df['age_group'].isin(age_options))
+        if risk_options:
+            mask = mask & (df['risk_level'].isin(risk_options))
+            
+        filtered_df = df[mask]
+        
+        if filtered_df.empty:
+            st.warning("No data available with current filters. Please adjust your selection.")
+            # Show charts with full dataset instead of returning
+            filtered_df = df
+    except Exception as e:
+        st.error(f"Filter error: {e}")
+        # Use full dataset if filtering fails
+        filtered_df = df
     
     # KPI Section
     st.markdown('<div class="section-header">Key Performance Indicators</div>', unsafe_allow_html=True)
@@ -811,7 +918,7 @@ def create_lab_scatter(df):
     # Lab metric selection
     lab_metrics = st.selectbox(
         "Laboratory Metric",
-        ['creatinine', 'glucose', 'hematocrit', 'hemo', 'neutrophils', 'sodium', 'bloodureanitro'],
+        ['creatinine', 'glucose', 'hematocrit', 'neutrophils', 'sodium', 'bloodureanitro'],
         key="lab_selector"
     )
     
@@ -966,12 +1073,12 @@ def create_detail_table(df):
     st.markdown("<br>", unsafe_allow_html=True)
     
     # Create tabs for better organization
-    tab1, tab2 = st.tabs(["📊 Full Patient List", "🔍 Search & Filter"])
+    tab1, tab2 = st.tabs(["Full Patient List", "Search & Filter"])
     
     with tab1:
         if not df.empty:
             # Add search functionality at the top
-            st.markdown("**🔍 Quick Search**")
+            st.markdown("**Quick Search**")
             search_col1, search_col2, search_col3 = st.columns([2, 1, 1])
             
             with search_col1:
@@ -1097,14 +1204,14 @@ def create_detail_table(df):
                 with col1:
                     # Get original patient ID for this row
                     patient_id = df.loc[idx, 'eid']
-                    if st.button(f"👤 {row['Patient Name']}", key=f"full_list_patient_{patient_id}"):
+                    if st.button(f"▸ {row['Patient Name']}", key=f"full_list_patient_{patient_id}"):
                         st.session_state.current_page = "patient_detail"
                         st.session_state.selected_patient = patient_id
                         st.rerun()
                 
                 with col2:
                     # Color code the risk level
-                    risk_color = "🔴" if row['Risk Level'] == "High Risk" else "🟢"
+                    risk_color = "●" if row['Risk Level'] == "High Risk" else "○"
                     st.write(f"{risk_color} {row['Risk Level']}")
                 with col3:
                     st.write(row['Age Group'])
@@ -1178,14 +1285,14 @@ def create_detail_table(df):
                     with col1:
                         # Get original patient ID for this row
                         patient_id = search_results.loc[idx, 'eid']
-                        if st.button(f"👤 {row['Patient Name']}", key=f"search_patient_{patient_id}"):
+                        if st.button(f"▸ {row['Patient Name']}", key=f"search_patient_{patient_id}"):
                             st.session_state.current_page = "patient_detail"
                             st.session_state.selected_patient = patient_id
                             st.rerun()
                     
                     with col2:
                         # Color code the risk level
-                        risk_color = "🔴" if row['Risk Level'] == "High Risk" else "🟢"
+                        risk_color = "●" if row['Risk Level'] == "High Risk" else "○"
                         st.write(f"{risk_color} {row['Risk Level']}")
                     with col3:
                         st.write(row['Age Group'])
@@ -1325,17 +1432,17 @@ def add_floating_chat():
     </style>
     
     <div id="floating-chat-btn" class="floating-chat-btn" onclick="toggleFloatingChat()">
-        💬
+        ▸
     </div>
     
     <div id="floating-chat-window" class="floating-chat-window">
         <div class="chat-header">
-            <span>🏥 Healthcare AI Assistant</span>
+            <span>Healthcare AI Assistant</span>
             <button class="chat-close" onclick="toggleFloatingChat()">✕</button>
         </div>
         <div class="chat-messages" id="chat-messages">
             <div class="message bot-message">
-                👋 Hello! I'm your healthcare AI assistant. I can help you analyze patient data, explain medical indicators, and provide insights about the dashboard. What would you like to know?
+                Hello! I'm your healthcare AI assistant. I can help you analyze patient data, explain medical indicators, and provide insights about the dashboard. What would you like to know?
             </div>
         </div>
         <div class="chat-input-area">
@@ -1379,7 +1486,7 @@ def add_floating_chat():
         // Add loading indicator
         const loadingMsg = document.createElement('div');
         loadingMsg.className = 'message bot-message';
-        loadingMsg.innerHTML = '🤔 Thinking...';
+        loadingMsg.innerHTML = 'Thinking...';
         loadingMsg.id = 'loading-msg';
         chatMessages.appendChild(loadingMsg);
         
@@ -1399,15 +1506,15 @@ def add_floating_chat():
         const message = userMessage.toLowerCase();
         
         if (message.includes('risk') || message.includes('high risk')) {
-            return '🔴 High-risk patients are those with length of stay > 90th percentile or readmission flags. You can filter them using the Risk Level filter in the sidebar.';
+            return 'High-risk patients are those with length of stay > 90th percentile or readmission flags. You can filter them using the Risk Level filter in the sidebar.';
         } else if (message.includes('creatinine')) {
-            return '🧪 Creatinine levels indicate kidney function. Higher levels may suggest kidney problems. Normal range is typically 0.6-1.2 mg/dL.';
+            return 'Creatinine levels indicate kidney function. Higher levels may suggest kidney problems. Normal range is typically 0.6-1.2 mg/dL.';
         } else if (message.includes('length') || message.includes('stay')) {
-            return '📊 Length of stay is a key metric. Longer stays often indicate complex cases or complications. Our data shows average LOS varies by department and patient condition.';
+            return 'Length of stay is a key metric. Longer stays often indicate complex cases or complications. Our data shows average LOS varies by department and patient condition.';
         } else if (message.includes('dashboard') || message.includes('help')) {
-            return '📈 This dashboard shows patient analytics, KPIs, and trends. You can filter by date, gender, department, age group, and risk level. Click patient names to see detailed records.';
+            return 'This dashboard shows patient analytics, KPIs, and trends. You can filter by date, gender, department, age group, and risk level. Click patient names to see detailed records.';
         } else {
-            return '🤖 I can help with patient data analysis, medical terms, and dashboard navigation. Try asking about "high risk patients", "creatinine levels", or "length of stay".';
+            return 'I can help with patient data analysis, medical terms, and dashboard navigation. Try asking about "high risk patients", "creatinine levels", or "length of stay".';
         }
     }
     </script>
@@ -1485,12 +1592,12 @@ def add_chat_widget_DISABLED():
         st.markdown("---")
         
         # Chat toggle button
-        if st.button("💬 AI Assistant", use_container_width=True, help="Chat with AI about the dashboard data"):
+        if st.button("▸ AI Assistant", use_container_width=True, help="Chat with AI about the dashboard data"):
             st.session_state.chat_visible = not st.session_state.chat_visible
         
         # Show chat interface if visible
         if st.session_state.chat_visible:
-            st.markdown("### 🤖 AI Healthcare Assistant")
+            st.markdown("### AI Healthcare Assistant")
             
             # Display chat messages
             chat_container = st.container()
