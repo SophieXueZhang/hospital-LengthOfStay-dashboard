@@ -864,12 +864,6 @@ def show_patient_detail(patient_id, df):
     
     st.markdown(f"**📅 Estimated Discharge Timeline:** {timeline}")
     
-    if recommendations:
-        for rec in recommendations:
-            st.write(f"▸ {rec}")
-    else:
-        st.write("○ Continue standard care protocols")
-    
     # Bottom full width sections
     st.markdown("---")
     
