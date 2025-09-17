@@ -445,10 +445,170 @@ def create_chart_template():
     }
     return template
 
+def generate_patient_response(patient, user_question):
+    """Generate AI response using OpenAI API based on patient data and user question"""
+    
+    try:
+        # Initialize OpenAI client
+        client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        
+        # Extract comprehensive patient information
+        patient_data = {
+            'name': patient['full_name'],
+            'id': patient['eid'],
+            'age_group': patient['age_group'],
+            'gender': patient['gender'],
+            'department': patient['facid'],
+            'length_of_stay': patient['lengthofstay'],
+            'risk_level': patient['risk_level'],
+            'glucose': patient['glucose'],
+            'creatinine': patient['creatinine'],
+            'hematocrit': patient['hematocrit'],
+            'pulse': patient['pulse'],
+            'respiration': patient['respiration'],
+            'bmi': patient['bmi'],
+            'sodium': patient['sodium'],
+            'neutrophils': patient['neutrophils'],
+            'blood_urea_nitrogen': patient['bloodureanitro']
+        }
+        
+        # Create detailed system prompt
+        system_prompt = f"""You are an AI medical assistant helping healthcare professionals analyze patient data. 
+        
+Patient Information:
+- Name: {patient_data['name']}
+- ID: {patient_data['id']}
+- Age Group: {patient_data['age_group']}
+- Gender: {patient_data['gender']}
+- Department: {patient_data['department']}
+- Length of Stay: {patient_data['length_of_stay']} days
+- Risk Level: {patient_data['risk_level']}
+
+Current Lab Values & Vitals:
+- Glucose: {patient_data['glucose']:.1f} mg/dL (normal: 70-140)
+- Creatinine: {patient_data['creatinine']:.3f} mg/dL (normal: 0.6-1.2)
+- Hematocrit: {patient_data['hematocrit']:.1f} g/dL (normal: 12-16)
+- Pulse: {patient_data['pulse']} bpm (normal: 60-100)
+- Respiration: {patient_data['respiration']} /min (normal: 12-20)
+- BMI: {patient_data['bmi']:.1f}
+- Sodium: {patient_data['sodium']:.1f} mEq/L
+- Neutrophils: {patient_data['neutrophils']:.1f}%
+- Blood Urea Nitrogen: {patient_data['blood_urea_nitrogen']:.1f} mg/dL
+
+Guidelines:
+1. Provide concise, clinical responses (2-3 sentences max)
+2. Focus on actionable medical insights
+3. Reference specific lab values when relevant
+4. Use medical terminology appropriately
+5. Suggest next steps when appropriate
+6. If values are abnormal, explain the clinical significance"""
+
+        # Make API call to OpenAI
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_question}
+            ],
+            max_tokens=200,
+            temperature=0.7
+        )
+        
+        return response.choices[0].message.content.strip()
+        
+    except Exception as e:
+        # Fallback to rule-based response if API fails
+        st.error(f"API Error: {str(e)}")
+        
+        # Simplified fallback response
+        name = patient['full_name']
+        glucose = patient['glucose']
+        creatinine = patient['creatinine']
+        risk_level = patient['risk_level']
+        
+        if 'risk' in user_question.lower():
+            return f"Patient has {risk_level} classification with {patient['rcount']} risk factors. Length of stay: {patient['lengthofstay']} days."
+        elif 'glucose' in user_question.lower() or 'blood sugar' in user_question.lower():
+            if glucose > 140:
+                return f"Glucose level is elevated at {glucose:.1f} mg/dL (normal: 70-140). Consider glucose management."
+            else:
+                return f"Glucose level is {glucose:.1f} mg/dL - within normal range."
+        elif 'kidney' in user_question.lower() or 'creatinine' in user_question.lower():
+            if creatinine > 1.2:
+                return f"Creatinine is elevated at {creatinine:.3f} mg/dL (normal: 0.6-1.2). Monitor kidney function."
+            else:
+                return f"Creatinine is {creatinine:.3f} mg/dL - within normal range."
+        elif 'discharge' in user_question.lower():
+            days = patient['lengthofstay']
+            if days > 7:
+                return f"Extended stay ({days} days). Review case for discharge readiness and potential barriers."
+            else:
+                return "Monitor for 24-48 hours. If stable, consider discharge planning."
+        else:
+            return f"I can help you analyze {name}'s case. Ask about risk factors, lab values, or treatment plans."
+
 def show_patient_detail(patient_id, df):
-    """Show detailed patient information with comprehensive 2-column layout"""
+    """Show detailed patient information with sidebar chat and comprehensive layout"""
     patient = df[df['eid'] == patient_id].iloc[0]
     
+    # Sidebar with patient-specific chat
+    with st.sidebar:
+        st.markdown("### 💬 AI Medical Assistant")
+        st.markdown(f"**Patient:** {patient['full_name']}")
+        st.markdown("---")
+        
+        # Initialize chat for this patient
+        chat_key = f"chat_history_{patient['eid']}"
+        if chat_key not in st.session_state:
+            st.session_state[chat_key] = [
+                {"role": "assistant", "content": f"Hello! I'm here to help with {patient['full_name']}'s case. What would you like to know?"}
+            ]
+        
+        # Display chat history
+        for message in st.session_state[chat_key]:
+            if message["role"] == "user":
+                st.markdown(f"**You:** {message['content']}")
+            else:
+                st.markdown(f"**AI:** {message['content']}")
+        
+        # Chat input
+        user_input = st.text_input("Ask about this patient...", key=f"chat_input_{patient['eid']}")
+        
+        if st.button("Send", key=f"send_btn_{patient['eid']}") and user_input:
+            # Add user message
+            st.session_state[chat_key].append({"role": "user", "content": user_input})
+            
+            # Generate AI response using OpenAI API
+            ai_response = generate_patient_response(patient, user_input)
+            st.session_state[chat_key].append({"role": "assistant", "content": ai_response})
+            st.rerun()
+        
+        # Quick action buttons
+        st.markdown("---")
+        st.markdown("**Quick Actions:**")
+        
+        if st.button("🔍 Risk Assessment", key=f"risk_btn_{patient['eid']}"):
+            risk_msg = f"Please provide a comprehensive risk assessment for {patient['full_name']} based on current lab values and clinical data."
+            st.session_state[chat_key].append({"role": "user", "content": risk_msg})
+            ai_response = generate_patient_response(patient, risk_msg)
+            st.session_state[chat_key].append({"role": "assistant", "content": ai_response})
+            st.rerun()
+        
+        if st.button("💊 Treatment Plan", key=f"treatment_btn_{patient['eid']}"):
+            treatment_msg = f"What treatment recommendations and interventions would you suggest for {patient['full_name']} based on their current condition?"
+            st.session_state[chat_key].append({"role": "user", "content": treatment_msg})
+            ai_response = generate_patient_response(patient, treatment_msg)
+            st.session_state[chat_key].append({"role": "assistant", "content": ai_response})
+            st.rerun()
+        
+        if st.button("🏠 Discharge Planning", key=f"discharge_btn_{patient['eid']}"):
+            discharge_msg = f"Evaluate {patient['full_name']}'s readiness for discharge and provide discharge planning recommendations."
+            st.session_state[chat_key].append({"role": "user", "content": discharge_msg})
+            ai_response = generate_patient_response(patient, discharge_msg)
+            st.session_state[chat_key].append({"role": "assistant", "content": ai_response})
+            st.rerun()
+    
+    # Main content area
     # Back button
     if st.button("← Back to Dashboard"):
         st.session_state.current_page = "dashboard"
