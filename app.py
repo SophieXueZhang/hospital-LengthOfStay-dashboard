@@ -32,7 +32,7 @@ COLORS = {
 # Page config
 st.set_page_config(
     page_title="Hospital Management Dashboard",
-    page_icon="▌",
+    page_icon="●",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -458,7 +458,7 @@ def show_patient_detail(patient_id, df):
     # Patient header
     st.markdown(f"""
     <div class="main-header">
-        <div class="main-title">▌ Patient Details: {patient['full_name']}</div>
+        <div class="main-title">Patient Details: {patient['full_name']}</div>
         <div class="main-subtitle">Comprehensive Medical Record</div>
     </div>
     """, unsafe_allow_html=True)
@@ -478,9 +478,11 @@ def show_patient_detail(patient_id, df):
         
     with col4:
         # Determine overall risk status
-        risk_status = "High Risk" if patient['risk_level'] == 'High Risk' else "Standard Risk"
-        risk_indicator = "●" if risk_status == "High Risk" else "○"
-        st.metric("Risk Status", f"{risk_indicator} {risk_status}")
+        st.metric("Risk Status", "")
+        if patient['risk_level'] == 'High Risk':
+            st.markdown("<span style='color: #D47A84;'>● High Risk</span>", unsafe_allow_html=True)
+        else:
+            st.markdown("○ Standard Risk")
     
     st.markdown("---")
     
@@ -501,11 +503,12 @@ def show_patient_detail(patient_id, df):
     if patient['glucose'] > 140:
         risk_factors.append("Elevated glucose")
     if patient['hematocrit'] < 12 or patient['hematocrit'] > 16:
-        risk_factors.append("Abnormal hematocrit")
+        hematocrit_status = "High hematocrit" if patient['hematocrit'] > 16 else "Low hematocrit"
+        risk_factors.append(f"<span style='color: #D47A84;'>{hematocrit_status}</span>")
     
     if risk_factors:
         for factor in risk_factors:
-            st.write(f"● {factor}")
+            st.markdown(f"● {factor}", unsafe_allow_html=True)
     else:
         st.write("○ No significant risk factors identified")
     
@@ -547,26 +550,40 @@ def show_patient_detail(patient_id, df):
     vital_col1, vital_col2 = st.columns(2)
     
     with vital_col1:
-        pulse_status = "Normal" if 60 <= patient['pulse'] <= 100 else "Abnormal"
-        st.metric("Pulse", f"{patient['pulse']} bpm", pulse_status)
+        pulse_normal = 60 <= patient['pulse'] <= 100
+        st.metric("Pulse", f"{patient['pulse']} bpm")
+        if pulse_normal:
+            st.markdown("✓ Normal")
+        else:
+            pulse_status = "High" if patient['pulse'] > 100 else "Low"
+            st.markdown(f"<span style='color: #D47A84;'>● {pulse_status}</span>", unsafe_allow_html=True)
         
     with vital_col2:
-        resp_status = "Normal" if 12 <= patient['respiration'] <= 20 else "Abnormal"
-        st.metric("Respiration", f"{patient['respiration']} /min", resp_status)
+        resp_normal = 12 <= patient['respiration'] <= 20
+        st.metric("Respiration", f"{patient['respiration']} /min")
+        if resp_normal:
+            st.markdown("✓ Normal")
+        else:
+            resp_status = "High" if patient['respiration'] > 20 else "Low"
+            st.markdown(f"<span style='color: #D47A84;'>● {resp_status}</span>", unsafe_allow_html=True)
     
     # BMI analysis (moved out of columns for single column layout)
     st.markdown("### BMI Assessment")
     bmi = patient['bmi']
     if bmi < 18.5:
-        bmi_status = "Underweight"
+        bmi_status = "Low"
     elif 18.5 <= bmi < 25:
         bmi_status = "Normal"
     elif 25 <= bmi < 30:
-        bmi_status = "Overweight"
+        bmi_status = "High"
     else:
-        bmi_status = "Obese"
+        bmi_status = "High"
     
-    st.metric("BMI", f"{bmi:.1f}", bmi_status)
+    st.metric("BMI", f"{bmi:.1f}")
+    if bmi_status == "Normal":
+        st.markdown("✓ Normal")
+    else:
+        st.markdown(f"<span style='color: #D47A84;'>● {bmi_status}</span>", unsafe_allow_html=True)
     
     # Laboratory Results with interpretations
     st.markdown("### Laboratory Results")
@@ -575,22 +592,34 @@ def show_patient_detail(patient_id, df):
     hematocrit = patient['hematocrit']
     hematocrit_normal = 12 <= hematocrit <= 16
     hematocrit_color = "○" if hematocrit_normal else "●"
-    st.metric("Hematocrit", f"{hematocrit:.1f} g/dL", 
-             f"{hematocrit_color} {'Normal' if hematocrit_normal else 'Abnormal'}")
+    st.metric("Hematocrit", f"{hematocrit:.1f} g/dL")
+    if hematocrit_normal:
+        st.markdown("○ Normal")
+    else:
+        hematocrit_status = "High" if hematocrit > 16 else "Low"
+        st.markdown(f"<span style='color: #D47A84;'>● {hematocrit_status}</span>", unsafe_allow_html=True)
         
     # Creatinine
     creatinine = patient['creatinine']
     creatinine_normal = 0.6 <= creatinine <= 1.2
     creatinine_color = "○" if creatinine_normal else "●"
-    st.metric("Creatinine", f"{creatinine:.3f} mg/dL",
-             f"{creatinine_color} {'Normal' if creatinine_normal else 'Abnormal'}")
+    st.metric("Creatinine", f"{creatinine:.3f} mg/dL")
+    if creatinine_normal:
+        st.markdown("○ Normal")
+    else:
+        creatinine_status = "High" if creatinine > 1.2 else "Low"
+        st.markdown(f"<span style='color: #D47A84;'>● {creatinine_status}</span>", unsafe_allow_html=True)
         
     # Glucose
     glucose = patient['glucose']
     glucose_normal = 70 <= glucose <= 140
     glucose_color = "○" if glucose_normal else "●"
-    st.metric("Glucose", f"{glucose:.1f} mg/dL",
-             f"{glucose_color} {'Normal' if glucose_normal else 'Abnormal'}")
+    st.metric("Glucose", f"{glucose:.1f} mg/dL")
+    if glucose_normal:
+        st.markdown("○ Normal")
+    else:
+        glucose_status = "High" if glucose > 140 else "Low"
+        st.markdown(f"<span style='color: #D47A84;'>● {glucose_status}</span>", unsafe_allow_html=True)
         
     # Other lab values
     st.metric("Neutrophils", f"{patient['neutrophils']:.1f}%")
@@ -666,8 +695,10 @@ def show_patient_detail(patient_id, df):
             emergency_indicators.append("Severe kidney dysfunction")
         if glucose > 300:
             emergency_indicators.append("Severe hyperglycemia")
-        if patient['pulse'] > 120 or patient['pulse'] < 50:
-            emergency_indicators.append("Abnormal heart rate")
+        if patient['pulse'] > 120:
+            emergency_indicators.append("High heart rate")
+        elif patient['pulse'] < 50:
+            emergency_indicators.append("Low heart rate")
         if hematocrit < 8:
             emergency_indicators.append("Severe anemia")
             
@@ -699,7 +730,7 @@ def main():
     # Header
     st.markdown("""
     <div class="main-header">
-        <div class="main-title">▌ Hospital Management Dashboard</div>
+        <div class="main-title">Hospital Management Dashboard</div>
         <div class="main-subtitle">Analytics & Performance Monitoring</div>
     </div>
     """, unsafe_allow_html=True)
