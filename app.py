@@ -628,25 +628,241 @@ def show_patient_detail(patient_id, df):
     
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # Care Recommendations
-    st.markdown("### Care Recommendations")
-    recommendations = []
+    # Clinical Decision Support
+    st.markdown("### 🎯 Priority Actions")
     
-    # Generate recommendations based on data
+    # Priority system: Critical -> High -> Medium -> Low
+    critical_actions = []
+    high_priority = []
+    medium_priority = []
+    low_priority = []
+    
+    # Critical (immediate action needed)
+    if glucose > 300:
+        critical_actions.append({
+            'issue': 'Severe Hyperglycemia',
+            'action': 'Immediate insulin protocol + hourly glucose monitoring',
+            'timeline': 'NOW'
+        })
+    if creatinine > 2.0:
+        critical_actions.append({
+            'issue': 'Severe Kidney Dysfunction', 
+            'action': 'Urgent nephrology consult + fluid balance review',
+            'timeline': 'Within 2 hours'
+        })
+    if patient['pulse'] > 120 or patient['pulse'] < 50:
+        critical_actions.append({
+            'issue': f"{'High' if patient['pulse'] > 120 else 'Low'} Heart Rate",
+            'action': 'ECG + cardiac monitoring + vitals q15min',
+            'timeline': 'NOW'
+        })
+    if hematocrit < 8:
+        critical_actions.append({
+            'issue': 'Severe Anemia',
+            'action': 'Type & cross + consider transfusion',
+            'timeline': 'Within 1 hour'
+        })
+    
+    # High Priority (same day)
+    if glucose > 180:
+        high_priority.append({
+            'issue': 'Hyperglycemia',
+            'action': 'Adjust insulin regimen + q6h glucose checks',
+            'timeline': 'Within 4 hours'
+        })
+    if creatinine > 1.5:
+        high_priority.append({
+            'issue': 'Kidney Function Decline',
+            'action': 'Review medications + increase monitoring',
+            'timeline': 'Today'
+        })
     if patient['lengthofstay'] > 10:
-        recommendations.append("Monitor for complications due to extended stay")
-    if creatinine > 1.2:
-        recommendations.append("Nephrology consultation recommended")
-    if glucose > 140:
-        recommendations.append("Diabetes management and monitoring")
+        high_priority.append({
+            'issue': 'Extended Stay Risk',
+            'action': 'Discharge planning meeting + complications review',
+            'timeline': 'Today'
+        })
+    
+    # Medium Priority (24-48 hours)
     if hematocrit < 12:
-        recommendations.append("Investigate and treat anemia")
-    if patient['readmit_flag'] == 1:
-        recommendations.append("Enhanced discharge planning to prevent readmission")
+        medium_priority.append({
+            'issue': 'Anemia',
+            'action': 'Iron studies + nutrition consult',
+            'timeline': 'Within 24h'
+        })
+    if patient['bmi'] < 18.5:
+        medium_priority.append({
+            'issue': 'Underweight',
+            'action': 'Nutrition assessment + calorie count',
+            'timeline': 'Within 48h'
+        })
     if any(patient[col] == 1 for col in ['depress', 'psychologicaldisordermajor']):
-        recommendations.append("Mental health support and monitoring")
-    if patient['malnutrition'] == 1:
-        recommendations.append("Nutritional assessment and intervention")
+        medium_priority.append({
+            'issue': 'Mental Health Needs',
+            'action': 'Psychology/psychiatry consult',
+            'timeline': 'Within 48h'
+        })
+    
+    # Low Priority (routine care)
+    if patient['bmi'] > 25:
+        low_priority.append({
+            'issue': 'Weight Management',
+            'action': 'Dietary counseling + activity plan',
+            'timeline': 'Before discharge'
+        })
+    if patient['readmit_flag'] == 1:
+        low_priority.append({
+            'issue': 'Readmission Risk',
+            'action': 'Enhanced discharge education + follow-up',
+            'timeline': 'Before discharge'
+        })
+    
+    # Display priorities
+    if critical_actions:
+        st.markdown("#### 🚨 **CRITICAL - Immediate Action Required**")
+        for action in critical_actions:
+            st.markdown(f"""
+            <div style="background-color: #FFF5F5; border-left: 4px solid #D47A84; padding: 10px; margin: 5px 0;">
+                <strong style="color: #D47A84;">{action['issue']}</strong><br>
+                <strong>Action:</strong> {action['action']}<br>
+                <strong>Timeline:</strong> {action['timeline']}
+            </div>
+            """, unsafe_allow_html=True)
+    
+    if high_priority:
+        st.markdown("#### ⚠️ **HIGH PRIORITY - Same Day**")
+        for action in high_priority:
+            st.markdown(f"""
+            <div style="background-color: #FFF8E1; border-left: 4px solid #E6B85C; padding: 10px; margin: 5px 0;">
+                <strong style="color: #E6B85C;">{action['issue']}</strong><br>
+                <strong>Action:</strong> {action['action']}<br>
+                <strong>Timeline:</strong> {action['timeline']}
+            </div>
+            """, unsafe_allow_html=True)
+    
+    if medium_priority:
+        st.markdown("#### 📋 **MEDIUM PRIORITY - 24-48 Hours**")
+        for action in medium_priority:
+            st.markdown(f"• **{action['issue']}**: {action['action']} ({action['timeline']})")
+    
+    if low_priority:
+        st.markdown("#### 📝 **ROUTINE CARE**")
+        for action in low_priority:
+            st.markdown(f"• **{action['issue']}**: {action['action']} ({action['timeline']})")
+    
+    if not (critical_actions or high_priority or medium_priority or low_priority):
+        st.markdown("✅ **No urgent interventions identified - continue routine care**")
+    
+    st.markdown("---")
+    
+    # Discharge Readiness Assessment
+    st.markdown("### 🏠 Discharge Readiness")
+    
+    # Calculate discharge readiness score
+    discharge_score = 0
+    blocking_factors = []
+    ready_factors = []
+    
+    # Medical stability (40% of score)
+    if not critical_actions and not high_priority:
+        discharge_score += 40
+        ready_factors.append("Medical condition stable")
+    else:
+        blocking_factors.append("Unresolved critical/high priority issues")
+    
+    # Lab values stability (30% of score)
+    stable_labs = 0
+    total_labs = 0
+    
+    if 70 <= glucose <= 180:
+        stable_labs += 1
+        ready_factors.append("Glucose controlled")
+    elif glucose > 180:
+        blocking_factors.append("Uncontrolled glucose")
+    total_labs += 1
+    
+    if 0.6 <= creatinine <= 1.5:
+        stable_labs += 1
+        ready_factors.append("Kidney function stable")
+    elif creatinine > 1.5:
+        blocking_factors.append("Kidney function concerns")
+    total_labs += 1
+    
+    if hematocrit >= 10:
+        stable_labs += 1
+        ready_factors.append("Adequate blood levels")
+    else:
+        blocking_factors.append("Severe anemia needs treatment")
+    total_labs += 1
+    
+    discharge_score += int(30 * stable_labs / total_labs)
+    
+    # Length of stay consideration (20% of score)
+    if patient['lengthofstay'] <= 7:
+        discharge_score += 20
+        ready_factors.append("Appropriate length of stay")
+    elif patient['lengthofstay'] > 14:
+        blocking_factors.append("Extended stay - investigate barriers")
+    else:
+        discharge_score += 10
+    
+    # Social factors (10% of score)
+    if patient['malnutrition'] == 0:
+        discharge_score += 5
+        ready_factors.append("Nutrition adequate")
+    else:
+        blocking_factors.append("Nutrition concerns need addressing")
+    
+    if not any(patient[col] == 1 for col in ['depress', 'psychologicaldisordermajor']):
+        discharge_score += 5
+        ready_factors.append("Mental health stable")
+    else:
+        blocking_factors.append("Mental health needs ongoing care")
+    
+    # Display discharge readiness
+    if discharge_score >= 80:
+        status_color = "#7FB069"
+        status_text = "READY FOR DISCHARGE"
+        status_icon = "✅"
+    elif discharge_score >= 60:
+        status_color = "#E6B85C"
+        status_text = "DISCHARGE PLANNING NEEDED"
+        status_icon = "⚠️"
+    else:
+        status_color = "#D47A84"
+        status_text = "NOT READY - REQUIRES INTERVENTION"
+        status_icon = "🚨"
+    
+    st.markdown(f"""
+    <div style="background-color: #F8F9FA; border: 2px solid {status_color}; border-radius: 8px; padding: 15px; margin: 10px 0;">
+        <h4 style="color: {status_color}; margin: 0;">{status_icon} {status_text}</h4>
+        <p style="font-size: 18px; margin: 5px 0;"><strong>Discharge Readiness Score: {discharge_score}/100</strong></p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if ready_factors:
+            st.markdown("**✅ Ready Indicators:**")
+            for factor in ready_factors:
+                st.markdown(f"• {factor}")
+    
+    with col2:
+        if blocking_factors:
+            st.markdown("**🚫 Blocking Factors:**")
+            for factor in blocking_factors:
+                st.markdown(f"• <span style='color: #D47A84;'>{factor}</span>", unsafe_allow_html=True)
+    
+    # Estimated discharge timeline
+    if discharge_score >= 80:
+        timeline = "Today - within 24 hours"
+    elif discharge_score >= 60:
+        timeline = "24-48 hours (after addressing issues)"
+    else:
+        timeline = "48+ hours (significant interventions needed)"
+    
+    st.markdown(f"**📅 Estimated Discharge Timeline:** {timeline}")
     
     if recommendations:
         for rec in recommendations:
