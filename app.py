@@ -33,6 +33,16 @@ except Exception as e:
 # Load environment variables
 load_dotenv()
 
+# Handle Streamlit Cloud secrets
+try:
+    # Try to get API key from Streamlit secrets first
+    OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv('OPENAI_API_KEY'))
+    if OPENAI_API_KEY:
+        os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
+except:
+    # Fallback to environment variable
+    pass
+
 # Nordic color palette - Ultra minimal
 COLORS = {
     'primary': '#334155',      # Slate gray
