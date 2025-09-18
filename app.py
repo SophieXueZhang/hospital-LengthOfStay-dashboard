@@ -17,12 +17,18 @@ try:
     from rag_system import RAGSystem
     rag_system = RAGSystem()
     RAG_AVAILABLE = rag_system.is_available()
+    print(f"RAG System - Database path: {rag_system.db_path}")
+    print(f"RAG System - Available: {RAG_AVAILABLE}")
     if not RAG_AVAILABLE:
         print("RAG system loaded but database not available")
-except ImportError:
+except ImportError as e:
     RAG_AVAILABLE = False
     rag_system = None
-    print("RAG system not available - import failed")
+    print(f"RAG system not available - import failed: {e}")
+except Exception as e:
+    RAG_AVAILABLE = False
+    rag_system = None
+    print(f"RAG system error: {e}")
 
 # Load environment variables
 load_dotenv()

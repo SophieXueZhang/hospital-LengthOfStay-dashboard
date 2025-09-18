@@ -406,7 +406,11 @@ class RAGSystem:
         high_quality_papers = []
         
         for paper in relevant_papers:
-            if paper['similarity'] >= 0.8 and paper['title'] not in seen_titles:
+            # Handle both similarity (vector DB) and score (lightweight DB)
+            paper_score = paper.get('similarity', paper.get('score', 0))
+            score_threshold = 0.8 if 'similarity' in paper else 5  # Different thresholds for different systems
+
+            if paper_score >= score_threshold and paper['title'] not in seen_titles:
                 # Extract year and author from filename and content if available
                 year, author = self.extract_paper_metadata(paper['filename'], paper['chunk_text'])
                 metadata_str = ""
@@ -418,7 +422,8 @@ class RAGSystem:
                         metadata_parts.append(year)
                     metadata_str = f" ({', '.join(metadata_parts)})"
                 
-                context_texts.append(f"From paper '{paper['title']}'{metadata_str} (similarity: {paper['similarity']:.3f}): {paper['chunk_text'][:800]}...")
+                score_text = f"similarity: {paper_score:.3f}" if 'similarity' in paper else f"relevance score: {paper_score}"
+                context_texts.append(f"From paper '{paper['title']}'{metadata_str} ({score_text}): {paper['chunk_text'][:800]}...")
                 paper_references.append({
                     'title': paper['title'],
                     'year': year,
