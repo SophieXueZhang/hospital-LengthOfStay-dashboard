@@ -14,27 +14,31 @@ import json
 
 # Import RAG system
 try:
-    from rag_system import rag_system
-    RAG_AVAILABLE = True
+    from rag_system import RAGSystem
+    rag_system = RAGSystem()
+    RAG_AVAILABLE = rag_system.is_available()
+    if not RAG_AVAILABLE:
+        print("RAG system loaded but database not available")
 except ImportError:
     RAG_AVAILABLE = False
-    print("RAG system not available - papers database not ready")
+    rag_system = None
+    print("RAG system not available - import failed")
 
 # Load environment variables
 load_dotenv()
 
-# Nordic color palette
+# Nordic color palette - Ultra minimal
 COLORS = {
-    'primary': '#2E5266',      # Dark blue-gray
-    'secondary': '#6C7B7F',    # Medium gray
-    'accent': '#A8B8C2',       # Light blue-gray
-    'light': '#F5F7FA',        # Very light gray
+    'primary': '#334155',      # Slate gray
+    'secondary': '#64748B',    # Medium slate
+    'accent': '#94A3B8',       # Light slate
+    'light': '#F8FAFC',        # Almost white
     'white': '#FFFFFF',        # Pure white
-    'success': '#7FB069',      # Muted green
-    'warning': '#E6B85C',      # Muted yellow
-    'danger': '#D47A84',       # Muted red
-    'text': '#2D3748',         # Dark text
-    'text_light': '#718096'    # Light text
+    'success': '#10B981',      # Clean green
+    'warning': '#F59E0B',      # Clean amber
+    'danger': '#EF4444',       # Clean red
+    'text': '#0F172A',         # Deep slate
+    'text_light': '#64748B'    # Medium slate
 }
 
 # Page config
@@ -48,153 +52,209 @@ st.set_page_config(
 # Custom CSS for Nordic design
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap');
     
+    /* Global styles with Nordic aesthetics */
     .main {
-        background-color: #FAFBFC;
-        font-family: 'Inter', sans-serif;
+        background: linear-gradient(180deg, #FDFEFF 0%, #F8FAFC 100%);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        color: #1A202C;
     }
     
     .stApp {
-        background-color: #FAFBFC;
+        background: linear-gradient(180deg, #FDFEFF 0%, #F8FAFC 100%);
     }
     
-    /* Header styling */
+    /* Typography - Nordic minimalism */
+    h1, h2, h3, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
+        font-family: 'Inter', sans-serif !important;
+        font-weight: 300 !important;
+        letter-spacing: -0.025em !important;
+        color: #1A202C !important;
+        line-height: 1.2 !important;
+    }
+    
+    /* Header styling - Clean and minimal */
     .main-header {
-        background: linear-gradient(135deg, #2E5266 0%, #6C7B7F 100%);
-        padding: 2rem 1rem;
-        margin: 0 0 2rem 0;
-        border-radius: 1rem;
+        background: linear-gradient(135deg, #334155 0%, #475569 100%);
+        padding: 3rem 2rem;
+        margin: -1rem -1rem 3rem -1rem;
+        border-radius: 0 0 2rem 2rem;
         color: white;
         text-align: center;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
     }
     
     .main-title {
-        font-size: 2.5rem;
+        font-size: 3rem;
+        font-weight: 200;
+        margin-bottom: 0.5rem;
+        letter-spacing: -0.04em;
+    }
+    
+    .main-subtitle {
+        font-size: 1.2rem;
+        opacity: 0.85;
         font-weight: 300;
+        letter-spacing: 0.01em;
+    }
+    
+    /* Cards - Ultra clean design */
+    .kpi-card {
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(10px);
+        padding: 2rem;
+        border-radius: 1rem;
+        border: 1px solid rgba(226, 232, 240, 0.3);
+        margin-bottom: 1.5rem;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    
+    .kpi-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.06);
+        border-color: rgba(148, 163, 184, 0.2);
+    }
+    
+    .kpi-value {
+        font-size: 2.25rem;
+        font-weight: 200;
+        color: #334155;
         margin-bottom: 0.5rem;
         letter-spacing: -0.02em;
     }
     
-    .main-subtitle {
-        font-size: 1.1rem;
-        opacity: 0.9;
-        font-weight: 300;
-    }
-    
-    /* KPI Card styling */
-    .kpi-card {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 0.75rem;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        border: 1px solid #E2E8F0;
-        margin-bottom: 1rem;
-        transition: all 0.2s ease;
-    }
-    
-    .kpi-card:hover {
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-        transform: translateY(-1px);
-    }
-    
-    .kpi-value {
-        font-size: 2rem;
-        font-weight: 600;
-        color: #2E5266;
-        margin-bottom: 0.25rem;
-    }
-    
     .kpi-label {
-        font-size: 0.9rem;
-        color: #718096;
+        font-size: 0.875rem;
+        color: #64748B;
         font-weight: 400;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: 0.1em;
     }
     
-    .kpi-icon {
-        font-size: 2rem;
-        opacity: 0.7;
-        margin-bottom: 0.5rem;
-    }
-    
-    /* Section headers */
+    /* Section headers - Minimal elegance */
     .section-header {
-        font-size: 1.25rem;
-        font-weight: 500;
-        color: #2D3748;
-        margin: 2rem 0 1rem 0;
-        border-bottom: 2px solid #E2E8F0;
-        padding-bottom: 0.5rem;
+        font-size: 1.5rem;
+        font-weight: 300;
+        color: #1E293B;
+        margin: 3rem 0 1.5rem 0;
+        position: relative;
+        padding-bottom: 0.75rem;
     }
     
-    /* Sidebar styling */
-    .css-1d391kg {
-        background-color: #F8FAFC;
+    .section-header::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 3rem;
+        height: 2px;
+        background: linear-gradient(90deg, #334155, transparent);
     }
     
-    /* Filter panel styling */
+    /* Sidebar - Clean and minimal */
+    .css-1d391kg, .css-12oz5g7 {
+        background: rgba(248, 250, 252, 0.8) !important;
+        backdrop-filter: blur(10px) !important;
+    }
+    
+    /* Filter panels - Glass morphism */
     .filter-panel {
-        background: white;
+        background: rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(15px);
         padding: 1.5rem;
-        border-radius: 0.75rem;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        border: 1px solid #E2E8F0;
-        margin-bottom: 1rem;
-        position: sticky;
-        top: 1rem;
+        border-radius: 1rem;
+        border: 1px solid rgba(226, 232, 240, 0.3);
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.02);
     }
     
     .filter-title {
-        font-size: 1.1rem;
+        font-size: 1rem;
         font-weight: 500;
-        color: #2D3748;
+        color: #1E293B;
         margin-bottom: 1rem;
-        border-bottom: 1px solid #E2E8F0;
-        padding-bottom: 0.5rem;
+        letter-spacing: 0.025em;
     }
     
-    
-    /* Custom input styling */
+    /* Input styling - Modern and clean */
     .stDateInput > div > div > input,
     .stMultiSelect > div > div > div,
-    .stSelectbox > div > div > div {
-        border-radius: 0.5rem !important;
-        border: 1px solid #E2E8F0 !important;
+    .stSelectbox > div > div > div,
+    .stTextInput > div > div > input {
+        border-radius: 0.75rem !important;
+        border: 1px solid rgba(203, 213, 225, 0.4) !important;
+        background: rgba(255, 255, 255, 0.9) !important;
         font-size: 0.9rem !important;
+        transition: all 0.2s ease !important;
     }
     
     .stDateInput > div > div > input:focus,
     .stMultiSelect > div > div > div:focus,
-    .stSelectbox > div > div > div:focus {
-        border-color: #2E5266 !important;
-        box-shadow: 0 0 0 2px rgba(46, 82, 102, 0.1) !important;
+    .stSelectbox > div > div > div:focus,
+    .stTextInput > div > div > input:focus {
+        border-color: #334155 !important;
+        box-shadow: 0 0 0 3px rgba(51, 65, 85, 0.1) !important;
     }
     
-    /* Filter labels */
+    /* Labels - Minimal typography */
     .stDateInput > label,
     .stMultiSelect > label,
-    .stSelectbox > label {
-        font-size: 0.85rem !important;
+    .stSelectbox > label,
+    .stTextInput > label {
+        font-size: 0.8rem !important;
         font-weight: 500 !important;
-        color: #4A5568 !important;
+        color: #475569 !important;
         margin-bottom: 0.5rem !important;
         text-transform: uppercase !important;
         letter-spacing: 0.05em !important;
     }
     
-    /* MultiSelect tag styling - change red to Nordic blue */
+    /* Tags - Nordic blue accents */
     .stMultiSelect [data-baseweb="tag"] {
-        background-color: #2E5266 !important;
-        border-color: #2E5266 !important;
+        background-color: #334155 !important;
+        border-color: #334155 !important;
+        border-radius: 0.5rem !important;
     }
     
     .stMultiSelect [data-baseweb="tag"] span {
         color: white !important;
+        font-weight: 400 !important;
     }
     
-    /* Remove button styling */
+    /* Buttons - Minimal design */
+    .stButton > button {
+        background: linear-gradient(135deg, #334155 0%, #475569 100%) !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 0.75rem !important;
+        padding: 0.5rem 1.5rem !important;
+        font-weight: 400 !important;
+        transition: all 0.2s ease !important;
+        letter-spacing: 0.025em !important;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 12px rgba(51, 65, 85, 0.3) !important;
+    }
+    
+    /* Expander - Clean design */
+    .streamlit-expanderHeader {
+        background: rgba(255, 255, 255, 0.8) !important;
+        border-radius: 0.75rem !important;
+        border: 1px solid rgba(226, 232, 240, 0.3) !important;
+        font-weight: 400 !important;
+        color: #1E293B !important;
+    }
+    
+    .streamlit-expanderContent {
+        background: rgba(255, 255, 255, 0.6) !important;
+        border: 1px solid rgba(226, 232, 240, 0.2) !important;
+        border-top: none !important;
+        border-radius: 0 0 0.75rem 0.75rem !important;
+    }
     .stMultiSelect [data-baseweb="tag"] [data-testid="stSelectboxClearIcon"] {
         color: rgba(255, 255, 255, 0.7) !important;
     }
@@ -428,19 +488,19 @@ def create_chart_template():
     """Create a consistent chart template with Nordic styling"""
     template = {
         'layout': {
-            'font': {'family': 'Inter, sans-serif', 'size': 12, 'color': COLORS['text']},
-            'paper_bgcolor': 'white',
-            'plot_bgcolor': 'white',
-            'margin': {'l': 50, 'r': 50, 't': 60, 'b': 50},
+            'font': {'family': 'Inter, sans-serif', 'size': 11, 'color': COLORS['text']},
+            'paper_bgcolor': 'rgba(255,255,255,0.9)',
+            'plot_bgcolor': 'rgba(248,250,252,0.5)',
+            'margin': {'l': 60, 'r': 60, 't': 80, 'b': 60},
             'xaxis': {
-                'gridcolor': '#F1F5F9',
-                'linecolor': '#E2E8F0',
-                'tickcolor': '#E2E8F0',
-                'tickfont': {'color': COLORS['text_light']}
+                'gridcolor': 'rgba(226,232,240,0.3)',
+                'linecolor': 'rgba(148,163,184,0.2)',
+                'tickcolor': 'rgba(148,163,184,0.2)',
+                'tickfont': {'color': COLORS['text_light'], 'size': 10}
             },
             'yaxis': {
-                'gridcolor': '#F1F5F9',
-                'linecolor': '#E2E8F0',
+                'gridcolor': 'rgba(226,232,240,0.3)',
+                'linecolor': 'rgba(148,163,184,0.2)',
                 'tickcolor': '#E2E8F0',
                 'tickfont': {'color': COLORS['text_light']}
             },
@@ -567,14 +627,14 @@ def show_patient_detail(patient_id, df):
     
     # Sidebar with patient-specific chat
     with st.sidebar:
-        st.markdown("### 💬 AI Medical Assistant")
+        st.markdown("### AI Medical Assistant")
         st.markdown(f"**Patient:** {patient['full_name']}")
         
         # RAG system status indicator
         if RAG_AVAILABLE:
-            st.success("📚 Paper-based insights enabled")
+            st.success("✅ Paper-based insights enabled")
         else:
-            st.warning("⏳ Loading medical papers database...")
+            st.info("💡 Basic AI assistant available (paper database not loaded)")
         
         st.markdown("---")
         
@@ -610,14 +670,14 @@ def show_patient_detail(patient_id, df):
         st.markdown("---")
         st.markdown("**Quick Actions:**")
         
-        if st.button("🔍 Risk Assessment", key=f"risk_btn_{patient['eid']}"):
+        if st.button("Risk Assessment", key=f"risk_btn_{patient['eid']}"):
             risk_msg = f"Please provide a comprehensive risk assessment for {patient['full_name']} based on current lab values and clinical data."
             st.session_state[chat_key].append({"role": "user", "content": risk_msg})
             ai_response = generate_patient_response(patient, risk_msg)
             st.session_state[chat_key].append({"role": "assistant", "content": ai_response})
             st.rerun()
         
-        if st.button("💊 Treatment Plan", key=f"treatment_btn_{patient['eid']}"):
+        if st.button("Treatment Plan", key=f"treatment_btn_{patient['eid']}"):
             treatment_msg = f"What treatment recommendations and interventions would you suggest for {patient['full_name']} based on their current condition?"
             st.session_state[chat_key].append({"role": "user", "content": treatment_msg})
             ai_response = generate_patient_response(patient, treatment_msg)
@@ -655,7 +715,7 @@ def show_patient_detail(patient_id, df):
         specific_conditions = [s for s in detected_symptoms if s not in ['length of stay', 'hospital admission', 'medical care']]
         
         if specific_conditions:
-            with st.expander("🔬 AI Clinical Summary & Evidence-Based Insights", expanded=True):
+            with st.expander("Clinical Summary & Evidence-Based Insights", expanded=True):
                 # Get RAG analysis for this patient
                 try:
                     rag_response, relevant_papers, diagnostic_details = rag_system.get_rag_response_for_patient(patient)
@@ -674,19 +734,33 @@ def show_patient_detail(patient_id, df):
                         # Display clinical insights
                         st.markdown("**Clinical Analysis:**")
                         # Remove the reference section from RAG response for cleaner display
-                        clean_response = rag_response.split("📚 参考文献:")[0].strip()
+                        clean_response = rag_response.split("References:")[0].strip()
                         st.markdown(clean_response)
                         
                         # Display relevant papers separately (remove duplicates)
                         if relevant_papers:
-                            st.markdown("**📚 Supporting Evidence:**")
+                            st.markdown("**Supporting Evidence:**")
                             unique_titles = []
                             for paper in relevant_papers[:3]:
                                 if paper['title'] not in unique_titles:
                                     unique_titles.append(paper['title'])
-                                    st.markdown(f"• {paper['title']}")
+                                    
+                                    # Extract year and author from filename and content
+                                    year, author = rag_system.extract_paper_metadata(paper.get('filename', ''), paper.get('chunk_text', ''))
+                                    
+                                    # Format citation
+                                    citation = paper['title']
+                                    citation_parts = []
+                                    if author:
+                                        citation_parts.append(author)
+                                    if year:
+                                        citation_parts.append(year)
+                                    if citation_parts:
+                                        citation += f" ({', '.join(citation_parts)})"
+                                    
+                                    st.markdown(f"• {citation}")
                     else:
-                        st.info("💡 Ask questions in the chat to get evidence-based insights for this patient.")
+                        st.info("Ask questions in the chat to get evidence-based insights for this patient.")
                         
                 except Exception as e:
                     st.warning("Clinical insights temporarily unavailable.")
@@ -1168,8 +1242,8 @@ def main():
     # Header
     st.markdown("""
     <div class="main-header">
-        <div class="main-title">Hospital Management Dashboard</div>
-        <div class="main-subtitle">Analytics & Performance Monitoring</div>
+        <div class="main-title">Healthcare Analytics</div>
+        <div class="main-subtitle">Patient Care & Performance Insights</div>
     </div>
     """, unsafe_allow_html=True)
     

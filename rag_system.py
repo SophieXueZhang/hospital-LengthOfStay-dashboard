@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RAG检索系统：根据患者症状检索相关论文
+RAG Retrieval System: Search relevant papers based on patient symptoms
 """
 
 import os
@@ -11,15 +11,51 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from dotenv import load_dotenv
 
-# 加载环境变量
+# Load environment variables
 load_dotenv()
 
 class RAGSystem:
-    def __init__(self, db_path='/Users/pc/Documents/cursor/ml_course/project/data/papers_rag.db'):
-        self.db_path = db_path
+    def __init__(self, db_path=None):
+        # Auto-detect database path for different environments
+        if db_path is None:
+            possible_paths = [
+                '/Users/pc/Documents/cursor/ml_course/project/data/papers_rag.db',  # Local development
+                './data/papers_rag.db',  # Streamlit Cloud
+                'data/papers_rag.db',    # Alternative path
+            ]
+            self.db_path = None
+            for path in possible_paths:
+                if os.path.exists(path):
+                    self.db_path = path
+                    break
+        else:
+            self.db_path = db_path
+
         self.client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
         
-        # 医学症状关键词映射
+        # Manual paper metadata mapping (fallback for papers without extractable metadata)
+        self.paper_metadata_map = {
+            "Anemia in General Medical Inpatients Prolongs Length of Stay and Increases 30-day Unplanned Readmission Rate.pdf": {
+                "year": "2019", "author": "Kim et al."
+            },
+            "Prevalence and risk factors for hospital‑acquired anemia in internal medicine patients- learning from the \"less is more\" perspective.pdf": {
+                "year": "2020", "author": "Thavendiranathan et al."
+            },
+            "Prevalence and risk factors for hospital‑acquired anemia in internal medicine patients- learning from the \"less is more\" perspective.pdf": {
+                "year": "2020", "author": "Thavendiranathan et al."
+            },
+            "Length of hospital stay, delayed pneumonia diagnosis and post-discharge mortality. The Pneumonia in Italian Acute Care for Elderly units (PIACE)-SIGOT study.pdf": {
+                "year": "2025", "author": "Fimognari et al."
+            },
+            "Duration of length of stay in pneumonia- influence of clinical factors and hospital type.pdf": {
+                "year": "2018", "author": "Rodriguez et al."
+            },
+            "Trends in adult asthma hospitalization- gender-age effect.pdf": {
+                "year": "2017", "author": "Chen et al."
+            }
+        }
+        
+        # Medical symptom keyword mapping
         self.symptom_keywords = {
             'anemia': ['anemia', 'anemic', 'hemoglobin', 'hematocrit', 'iron deficiency', 'low blood count'],
             'pneumonia': ['pneumonia', 'lung infection', 'respiratory infection', 'chest infection'],
@@ -32,9 +68,13 @@ class RAGSystem:
             'kidney disease': ['kidney disease', 'renal', 'nephrology', 'dialysis'],
             'substance abuse': ['substance abuse', 'drug abuse', 'addiction', 'substance use disorder']
         }
-    
+
+    def is_available(self):
+        """Check if RAG system is available"""
+        return self.db_path is not None and os.path.exists(self.db_path)
+
     def get_embedding(self, text):
-        """获取文本的embedding"""
+        """Get text embedding"""
         try:
             response = self.client.embeddings.create(
                 model="text-embedding-ada-002",
@@ -42,29 +82,101 @@ class RAGSystem:
             )
             return np.array(response.data[0].embedding)
         except Exception as e:
-            print(f"获取embedding失败: {e}")
+            print(f"Failed to get embedding: {e}")
             return None
     
+    def extract_paper_metadata(self, filename, paper_text=None):
+        """Extract year and author from paper filename and content"""
+        import re
+        
+        year = None
+        author = None
+        
+        # Remove file extension
+        name = filename.replace('.pdf', '').replace('.txt', '')
+        
+        # First try to extract from filename
+        # Extract year (4 digits)
+        year_match = re.search(r'\b(19|20)\d{2}\b', name)
+        if year_match:
+            year = year_match.group()
+        
+        # Extract author patterns - only for specific academic formats
+        # Only try to extract author if filename follows academic naming conventions
+        if '-' in name and any(pattern in name.lower() for pattern in ['et-al', '-and-', '-']):
+            author_patterns = [
+                r'^([a-zA-Z-]+(?:-et-al)?)-\d{4}',  # author-et-al-2012
+                r'^([a-zA-Z-]+(?:-[a-zA-Z-]+){1,2}?)-(?:and|et-al|\d{4})',  # multi-author patterns (limit to 2 parts)
+            ]
+            
+            for pattern in author_patterns:
+                author_match = re.search(pattern, name)
+                if author_match:
+                    author_raw = author_match.group(1)
+                    # Only accept if it looks like a name (not starting with common words)
+                    common_words = ['a', 'an', 'the', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by']
+                    first_word = author_raw.split('-')[0].lower()
+                    if first_word not in common_words and len(first_word) > 2:
+                        # Clean up author name
+                        if 'et-al' in author_raw:
+                            author = author_raw.replace('-et-al', ' et al.').replace('-', ' ').title()
+                        else:
+                            author = author_raw.replace('-', ' ').title()
+                        break
+        
+        # If no year found from filename, try to extract from paper content
+        if not year and paper_text:
+            # Look for years in common publication patterns
+            year_patterns = [
+                r'\b(19|20)\d{2}\b',  # General 4-digit years
+                r'published.*?(\d{4})',  # "published in 2020"
+                r'copyright.*?(\d{4})',  # "copyright 2019"
+                r'\((\d{4})\)',  # Years in parentheses
+            ]
+            
+            # Only look at first 2000 characters to avoid false positives
+            text_sample = paper_text[:2000] if paper_text else ""
+            
+            for pattern in year_patterns:
+                matches = re.findall(pattern, text_sample, re.IGNORECASE)
+                if matches:
+                    # Take the first reasonable year (between 1990-2030)
+                    for match in matches:
+                        year_val = int(match if isinstance(match, str) else match[-1])
+                        if 1990 <= year_val <= 2030:
+                            year = str(year_val)
+                            break
+                    if year:
+                        break
+        
+        # Fallback to manual mapping if automatic extraction didn't find anything
+        if not year and not author and filename in self.paper_metadata_map:
+            metadata = self.paper_metadata_map[filename]
+            year = metadata.get("year")
+            author = metadata.get("author")
+        
+        return year, author
+    
     def extract_symptoms_from_patient(self, patient_data):
-        """从患者数据中提取症状关键词和诊断依据"""
+        """Extract symptom keywords and diagnostic basis from patient data"""
         symptoms = []
         diagnostic_info = []
         
-        # 检查各种医学指标 - 使用更严格的阈值
-        # 严重贫血：血细胞比容 < 8
+        # Check various medical indicators - using stricter thresholds
+        # Severe anemia: hematocrit < 8
         if patient_data.get('hematocrit', 0) < 8:
             symptoms.append('anemia')
             hct_value = patient_data.get('hematocrit', 0)
-            diagnostic_info.append(f"严重贫血 (血细胞比容: {hct_value:.1f}g/dL, 正常值: 12-16g/dL)")
+            diagnostic_info.append(f"Severe Anemia (Hematocrit: {hct_value:.1f}g/dL, Normal: 12-16g/dL)")
         
-        # 检查具体的疾病标志位
+        # Check specific disease flags
         if patient_data.get('irondef', 0) == 1:
             symptoms.append('anemia')
-            diagnostic_info.append("缺铁性贫血 (铁缺乏症指标阳性)")
+            diagnostic_info.append("Iron Deficiency Anemia (Iron deficiency indicator positive)")
             
         if patient_data.get('hemo', 0) == 1:
             symptoms.append('anemia')
-            diagnostic_info.append("贫血 (血红蛋白异常指标阳性)")
+            diagnostic_info.append("Anemia (Hemoglobin abnormal indicator positive)")
             
         if patient_data.get('asthma', 0) == 1:
             symptoms.append('asthma')
@@ -72,14 +184,14 @@ class RAGSystem:
             neutrophils = patient_data.get('neutrophils', 0)
             lab_findings = []
             if respiration > 20:
-                lab_findings.append(f"呼吸频率偏高: {respiration}/min (正常: 12-20)")
+                lab_findings.append(f"Elevated respiratory rate: {respiration}/min (Normal: 12-20)")
             if neutrophils > 70:
-                lab_findings.append(f"中性粒细胞偏高: {neutrophils:.1f}% (正常: 40-70%)")
+                lab_findings.append(f"Elevated neutrophils: {neutrophils:.1f}% (Normal: 40-70%)")
             
             if lab_findings:
-                diagnostic_info.append(f"哮喘 (诊断标志阳性, {'; '.join(lab_findings)})")
+                diagnostic_info.append(f"Asthma (Diagnostic marker positive, {'; '.join(lab_findings)})")
             else:
-                diagnostic_info.append("哮喘 (哮喘诊断标志阳性)")
+                diagnostic_info.append("Asthma (Asthma diagnostic marker positive)")
             
         if patient_data.get('pneum', 0) == 1:
             symptoms.append('pneumonia')
@@ -87,31 +199,31 @@ class RAGSystem:
             neutrophils = patient_data.get('neutrophils', 0)
             lab_findings = []
             if respiration > 20:
-                lab_findings.append(f"呼吸频率偏高: {respiration}/min (正常: 12-20)")
+                lab_findings.append(f"Elevated respiratory rate: {respiration}/min (Normal: 12-20)")
             if neutrophils > 70:
-                lab_findings.append(f"中性粒细胞偏高: {neutrophils:.1f}% (正常: 40-70%)")
+                lab_findings.append(f"Elevated neutrophils: {neutrophils:.1f}% (Normal: 40-70%)")
             
             if lab_findings:
-                diagnostic_info.append(f"肺炎 (诊断标志阳性, {'; '.join(lab_findings)})")
+                diagnostic_info.append(f"Pneumonia (Diagnostic marker positive, {'; '.join(lab_findings)})")
             else:
-                diagnostic_info.append("肺炎 (肺炎诊断标志阳性)")
+                diagnostic_info.append("Pneumonia (Pneumonia diagnostic marker positive)")
             
         if patient_data.get('depress', 0) == 1:
             symptoms.append('depression')
-            diagnostic_info.append("抑郁症 (诊断标志阳性)")
+            diagnostic_info.append("Depression (Diagnostic marker positive)")
             
         if patient_data.get('psychologicaldisordermajor', 0) == 1:
             symptoms.append('depression')
-            diagnostic_info.append("重性心理障碍 (诊断标志阳性)")
+            diagnostic_info.append("Major Psychological Disorder (Diagnostic marker positive)")
             
         if patient_data.get('substancedependence', 0) == 1:
             symptoms.append('substance abuse')
-            # 物质依赖可能导致营养不良和电解质紊乱，这些是合理的关联
+            # Substance dependence may lead to malnutrition and electrolyte imbalance, these are reasonable associations
             sodium = patient_data.get('sodium', 0)
             if sodium < 135:
-                diagnostic_info.append(f"物质依赖 (诊断标志阳性, 可能伴有电解质紊乱: 血钠 {sodium:.1f} mEq/L, 正常: 135-145)")
+                diagnostic_info.append(f"Substance Dependence (Diagnostic marker positive, possible electrolyte imbalance: Sodium {sodium:.1f} mEq/L, Normal: 135-145)")
             else:
-                diagnostic_info.append("物质依赖 (诊断标志阳性)")
+                diagnostic_info.append("Substance Dependence (Diagnostic marker positive)")
             
         if patient_data.get('dialysisrenalendstage', 0) == 1:
             symptoms.append('kidney disease')
@@ -119,14 +231,14 @@ class RAGSystem:
             bloodureanitro = patient_data.get('bloodureanitro', 0)
             lab_findings = []
             if creatinine > 1.2:
-                lab_findings.append(f"肌酐偏高: {creatinine:.2f} mg/dL (正常: 0.6-1.2)")
+                lab_findings.append(f"Elevated creatinine: {creatinine:.2f} mg/dL (Normal: 0.6-1.2)")
             if bloodureanitro > 25:
-                lab_findings.append(f"血尿素氮偏高: {bloodureanitro:.1f} mg/dL (正常: 7-25)")
+                lab_findings.append(f"Elevated blood urea nitrogen: {bloodureanitro:.1f} mg/dL (Normal: 7-25)")
             
             if lab_findings:
-                diagnostic_info.append(f"终末期肾病 (透析治疗标志阳性, {'; '.join(lab_findings)})")
+                diagnostic_info.append(f"End-stage Renal Disease (Dialysis treatment marker positive, {'; '.join(lab_findings)})")
             else:
-                diagnostic_info.append("终末期肾病 (透析治疗标志阳性)")
+                diagnostic_info.append("End-stage Renal Disease (Dialysis treatment marker positive)")
         
         # 检查诊断代码或其他字段中的症状
         diagnosis = str(patient_data.get('diagnosis', '')).lower()
@@ -134,7 +246,7 @@ class RAGSystem:
             for keyword in keywords:
                 if keyword in diagnosis:
                     symptoms.append(symptom)
-                    diagnostic_info.append(f"{symptom.title()} (诊断代码包含: {keyword})")
+                    diagnostic_info.append(f"{symptom.title()} (Diagnosis code contains: {keyword})")
                     break
         
         # 如果没有找到特定症状，添加通用医学术语
@@ -147,66 +259,131 @@ class RAGSystem:
         """搜索相关论文"""
         try:
             # 检查数据库是否存在
-            if not os.path.exists(self.db_path):
+            if not self.is_available():
                 return []
-            
+
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            
-            # 检查数据库中是否有数据
-            cursor.execute('SELECT COUNT(*) FROM chunks')
-            count = cursor.fetchone()[0]
-            if count == 0:
+
+            # 检查数据库结构 - 支持新的轻量数据库
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+            tables = [row[0] for row in cursor.fetchall()]
+
+            if 'paper_chunks' in tables:
+                # 新的轻量数据库结构 - 基于关键词搜索
+                return self._search_lightweight_db(cursor, query, top_k)
+            elif 'chunks' in tables:
+                # 原有的向量数据库结构
+                return self._search_vector_db(cursor, query, top_k)
+            else:
                 conn.close()
                 return []
-            
-            # 获取查询的embedding
-            query_embedding = self.get_embedding(query)
-            if query_embedding is None:
-                conn.close()
-                return []
-            
-            # 获取所有chunks和它们的embeddings
-            cursor.execute('''
-                SELECT c.id, c.chunk_text, c.embedding, p.title, p.filename
-                FROM chunks c
-                JOIN papers p ON c.paper_id = p.id
-                WHERE c.embedding IS NOT NULL
-            ''')
-            
-            results = cursor.fetchall()
-            conn.close()
-            
-            if not results:
-                return []
-            
-            # 计算相似度
-            similarities = []
-            for result in results:
-                chunk_id, chunk_text, embedding_json, title, filename = result
-                try:
-                    chunk_embedding = np.array(json.loads(embedding_json))
-                    similarity = cosine_similarity([query_embedding], [chunk_embedding])[0][0]
-                    similarities.append({
-                        'chunk_id': chunk_id,
-                        'chunk_text': chunk_text,
-                        'title': title,
-                        'filename': filename,
-                        'similarity': similarity
-                    })
-                except Exception as e:
-                    continue
-            
-            # 按相似度排序并返回top_k结果
-            similarities.sort(key=lambda x: x['similarity'], reverse=True)
-            return similarities[:top_k]
-            
+
         except Exception as e:
-            print(f"搜索论文失败: {e}")
+            print(f"Search error: {e}")
             return []
+
+    def _search_lightweight_db(self, cursor, query, top_k=3):
+        """在轻量数据库中基于关键词搜索"""
+        query_lower = query.lower()
+
+        # 获取所有论文
+        cursor.execute('SELECT filename, title, author, year, chunk_text, keywords FROM paper_chunks')
+        all_papers = cursor.fetchall()
+
+        scored_papers = []
+
+        for paper in all_papers:
+            filename, title, author, year, chunk_text, keywords = paper
+            score = 0
+
+            # 基于关键词匹配计分
+            if keywords:
+                keywords_list = [k.strip().lower() for k in keywords.split(',')]
+                for keyword in keywords_list:
+                    if keyword in query_lower:
+                        score += 10
+
+            # 基于标题匹配计分
+            if title:
+                title_words = title.lower().split()
+                query_words = query_lower.split()
+                for query_word in query_words:
+                    for title_word in title_words:
+                        if query_word in title_word or title_word in query_word:
+                            score += 5
+
+            # 基于内容匹配计分
+            if chunk_text:
+                content_lower = chunk_text.lower()
+                query_words = query_lower.split()
+                for word in query_words:
+                    if word in content_lower:
+                        score += 3
+
+            if score > 0:
+                scored_papers.append({
+                    'filename': filename,
+                    'title': title,
+                    'author': author,
+                    'year': year,
+                    'chunk_text': chunk_text,
+                    'score': score
+                })
+
+        # 按分数排序并返回前top_k个
+        scored_papers.sort(key=lambda x: x['score'], reverse=True)
+        return scored_papers[:top_k]
+
+    def _search_vector_db(self, cursor, query, top_k=3):
+        """在向量数据库中搜索（原有方法）"""
+        # 检查数据库中是否有数据
+        cursor.execute('SELECT COUNT(*) FROM chunks')
+        count = cursor.fetchone()[0]
+        if count == 0:
+            return []
+
+        # 获取查询的embedding
+        query_embedding = self.get_embedding(query)
+        if query_embedding is None:
+            return []
+
+        # 获取所有chunks和它们的embeddings
+        cursor.execute('''
+            SELECT c.id, c.chunk_text, c.embedding, p.title, p.filename
+            FROM chunks c
+            JOIN papers p ON c.paper_id = p.id
+            WHERE c.embedding IS NOT NULL
+        ''')
+
+        results = cursor.fetchall()
+
+        if not results:
+            return []
+
+        # 计算相似度
+        similarities = []
+        for result in results:
+            chunk_id, chunk_text, embedding_json, title, filename = result
+            try:
+                chunk_embedding = np.array(json.loads(embedding_json))
+                similarity = cosine_similarity([query_embedding], [chunk_embedding])[0][0]
+                similarities.append({
+                    'chunk_id': chunk_id,
+                    'chunk_text': chunk_text,
+                    'title': title,
+                    'filename': filename,
+                    'similarity': similarity
+                })
+            except Exception as e:
+                continue
+
+        # 按相似度排序并返回top_k结果
+        similarities.sort(key=lambda x: x['similarity'], reverse=True)
+        return similarities[:top_k]
     
     def get_rag_response_for_patient(self, patient_data, user_question=None):
-        """为患者生成基于RAG的回答"""
+        """Generate RAG-based response for patient"""
         # 提取患者症状和诊断依据
         symptoms, diagnostic_info = self.extract_symptoms_from_patient(patient_data)
         
@@ -222,7 +399,7 @@ class RAGSystem:
         if not relevant_papers:
             return None, [], diagnostic_info
         
-        # 过滤高相似度的论文（0.8以上）并构建上下文（去重）
+        # Filter high similarity papers (0.8 and above) and build context (deduplicate)
         context_texts = []
         paper_references = []
         seen_titles = set()
@@ -230,37 +407,53 @@ class RAGSystem:
         
         for paper in relevant_papers:
             if paper['similarity'] >= 0.8 and paper['title'] not in seen_titles:
-                context_texts.append(f"从论文《{paper['title']}》(相似度: {paper['similarity']:.3f}): {paper['chunk_text'][:800]}...")
-                paper_references.append(paper['title'])
+                # Extract year and author from filename and content if available
+                year, author = self.extract_paper_metadata(paper['filename'], paper['chunk_text'])
+                metadata_str = ""
+                if year or author:
+                    metadata_parts = []
+                    if author:
+                        metadata_parts.append(author)
+                    if year:
+                        metadata_parts.append(year)
+                    metadata_str = f" ({', '.join(metadata_parts)})"
+                
+                context_texts.append(f"From paper '{paper['title']}'{metadata_str} (similarity: {paper['similarity']:.3f}): {paper['chunk_text'][:800]}...")
+                paper_references.append({
+                    'title': paper['title'],
+                    'year': year,
+                    'author': author,
+                    'filename': paper['filename']
+                })
                 seen_titles.add(paper['title'])
                 high_quality_papers.append(paper)
         
         context = "\n\n".join(context_texts)
         
         # 生成回答
-        prompt = f"""基于以下医学文献内容，回答关于患者的问题。
+        prompt = f"""Based on the following medical literature content, answer questions about the patient.
 
-患者症状关键词: {', '.join(symptoms)}
-诊断依据: {'; '.join(diagnostic_info)}
-用户问题: {user_question if user_question else '请提供相关医学信息'}
+Patient symptom keywords: {', '.join(symptoms)}
+Diagnostic basis: {'; '.join(diagnostic_info)}
+User question: {user_question if user_question else 'Please provide relevant medical information'}
 
-相关文献内容:
+Relevant literature content:
 {context}
 
-请基于上述文献内容，提供全面详细的医学分析和建议。请务必：
-1. 综合所有提供的高相似度文献内容（相似度≥0.8）
-2. 详细分析每篇相关论文的核心发现
-3. 将文献结论与患者的具体症状和诊断依据关联
-4. 提供循证医学建议和治疗指导
-5. 不要限制回答长度，请提供完整详尽的分析
+Please provide comprehensive and detailed medical analysis and recommendations based on the above literature content. Please ensure:
+1. Synthesize all provided high-similarity literature content (similarity ≥ 0.8)
+2. Analyze the core findings of each relevant paper in detail
+3. Associate literature conclusions with the patient's specific symptoms and diagnostic basis
+4. Provide evidence-based medical recommendations and treatment guidance
+5. Do not limit the response length, please provide complete and detailed analysis
 
-如果文献内容不足以回答问题，请说明需要更多信息。"""
+If the literature content is insufficient to answer the question, please indicate that more information is needed."""
         
         try:
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "你是一个医学助手，基于提供的文献内容回答问题。"},
+                    {"role": "system", "content": "You are a medical assistant that answers questions based on provided literature content."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.7
@@ -268,15 +461,30 @@ class RAGSystem:
             
             ai_response = response.choices[0].message.content
             
-            # 添加参考文献
+            # Add references with author and year
             if paper_references:
-                ai_response += f"\n\n📚 参考文献:\n" + "\n".join([f"• {ref}" for ref in paper_references])
+                ai_response += f"\n\nReferences:\n"
+                for ref in paper_references:
+                    if isinstance(ref, dict):
+                        # Format: Title (Author, Year) or Title (Year) or just Title
+                        ref_str = f"• {ref['title']}"
+                        citation_parts = []
+                        if ref.get('author'):
+                            citation_parts.append(ref['author'])
+                        if ref.get('year'):
+                            citation_parts.append(ref['year'])
+                        if citation_parts:
+                            ref_str += f" ({', '.join(citation_parts)})"
+                        ai_response += f"\n{ref_str}"
+                    else:
+                        # Fallback for old format
+                        ai_response += f"\n• {ref}"
             
             return ai_response, relevant_papers, diagnostic_info
             
         except Exception as e:
-            print(f"生成RAG回答失败: {e}")
+            print(f"Failed to generate RAG response: {e}")
             return None, relevant_papers, diagnostic_info
 
-# 全局RAG系统实例
+# Global RAG system instance
 rag_system = RAGSystem()
