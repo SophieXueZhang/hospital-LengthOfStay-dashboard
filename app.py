@@ -12,6 +12,14 @@ import openai
 import asyncio
 import json
 
+# Import RAG system
+try:
+    from rag_system import rag_system
+    RAG_AVAILABLE = True
+except ImportError:
+    RAG_AVAILABLE = False
+    print("RAG system not available - papers database not ready")
+
 # Load environment variables
 load_dotenv()
 
@@ -446,10 +454,16 @@ def create_chart_template():
     return template
 
 def generate_patient_response(patient, user_question):
-    """Generate AI response using OpenAI API based on patient data and user question"""
+    """Generate AI response using RAG system or fallback to basic OpenAI API"""
     
     try:
-        # Initialize OpenAI client
+        # Try RAG system first if available
+        if RAG_AVAILABLE:
+            rag_response, relevant_papers, diagnostic_info = rag_system.get_rag_response_for_patient(patient, user_question)
+            if rag_response:
+                return rag_response
+        
+        # Fallback to basic OpenAI response
         client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
         
         # Extract comprehensive patient information
@@ -555,6 +569,13 @@ def show_patient_detail(patient_id, df):
     with st.sidebar:
         st.markdown("### 💬 AI Medical Assistant")
         st.markdown(f"**Patient:** {patient['full_name']}")
+        
+        # RAG system status indicator
+        if RAG_AVAILABLE:
+            st.success("📚 Paper-based insights enabled")
+        else:
+            st.warning("⏳ Loading medical papers database...")
+        
         st.markdown("---")
         
         # Initialize chat for this patient
@@ -571,10 +592,12 @@ def show_patient_detail(patient_id, df):
             else:
                 st.markdown(f"**AI:** {message['content']}")
         
-        # Chat input
-        user_input = st.text_input("Ask about this patient...", key=f"chat_input_{patient['eid']}")
+        # Chat input with form for Enter key submission
+        with st.form(key=f"chat_form_{patient['eid']}", clear_on_submit=True):
+            user_input = st.text_input("Ask about this patient...", key=f"chat_input_{patient['eid']}")
+            submitted = st.form_submit_button("Send")
         
-        if st.button("Send", key=f"send_btn_{patient['eid']}") and user_input:
+        if submitted and user_input:
             # Add user message
             st.session_state[chat_key].append({"role": "user", "content": user_input})
             
@@ -622,6 +645,51 @@ def show_patient_detail(patient_id, df):
         <div class="main-subtitle">Comprehensive Medical Record</div>
     </div>
     """, unsafe_allow_html=True)
+    
+    # AI-Based Clinical Summary Section - Only show if patient has identifiable conditions
+    if RAG_AVAILABLE:
+        # Check if patient has detectable symptoms/conditions
+        detected_symptoms, diagnostic_info = rag_system.extract_symptoms_from_patient(patient)
+        
+        # Only show if we detect specific medical conditions (not just generic terms)
+        specific_conditions = [s for s in detected_symptoms if s not in ['length of stay', 'hospital admission', 'medical care']]
+        
+        if specific_conditions:
+            with st.expander("🔬 AI Clinical Summary & Evidence-Based Insights", expanded=True):
+                # Get RAG analysis for this patient
+                try:
+                    rag_response, relevant_papers, diagnostic_details = rag_system.get_rag_response_for_patient(patient)
+                    
+                    if rag_response and relevant_papers:
+                        # Display detected conditions with diagnostic reasoning
+                        condition_list = ", ".join(specific_conditions).title()
+                        st.markdown(f"**Detected Conditions:** {condition_list}")
+                        
+                        # Display diagnostic basis
+                        if diagnostic_details:
+                            st.markdown("**Diagnostic Basis:**")
+                            for detail in diagnostic_details:
+                                st.markdown(f"• {detail}")
+                        
+                        # Display clinical insights
+                        st.markdown("**Clinical Analysis:**")
+                        # Remove the reference section from RAG response for cleaner display
+                        clean_response = rag_response.split("📚 参考文献:")[0].strip()
+                        st.markdown(clean_response)
+                        
+                        # Display relevant papers separately (remove duplicates)
+                        if relevant_papers:
+                            st.markdown("**📚 Supporting Evidence:**")
+                            unique_titles = []
+                            for paper in relevant_papers[:3]:
+                                if paper['title'] not in unique_titles:
+                                    unique_titles.append(paper['title'])
+                                    st.markdown(f"• {paper['title']}")
+                    else:
+                        st.info("💡 Ask questions in the chat to get evidence-based insights for this patient.")
+                        
+                except Exception as e:
+                    st.warning("Clinical insights temporarily unavailable.")
     
     # Health Status Overview (Full width, 4 metrics)
     st.markdown("### Health Status Overview")
@@ -1573,6 +1641,10 @@ def create_detail_table(df):
             with col_page2:
                 current_page = st.selectbox("Page", range(1, total_pages + 1), key="full_list_page")
             
+            # Ensure current_page is not None
+            if current_page is None:
+                current_page = 1
+                
             start_idx = (current_page - 1) * items_per_page
             end_idx = start_idx + items_per_page
             page_data = full_list.iloc[start_idx:end_idx]
