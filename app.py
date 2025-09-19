@@ -1,4 +1,12 @@
+# Page config - MUST be first Streamlit command
 import streamlit as st
+st.set_page_config(
+    page_title="Hospital Management Dashboard",
+    page_icon="●",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
@@ -56,14 +64,6 @@ COLORS = {
     'text': '#0F172A',         # Deep slate
     'text_light': '#64748B'    # Medium slate
 }
-
-# Page config
-st.set_page_config(
-    page_title="Hospital Management Dashboard",
-    page_icon="●",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
 # Custom CSS for Nordic design
 st.markdown("""
