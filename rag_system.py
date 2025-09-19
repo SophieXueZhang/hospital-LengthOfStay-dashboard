@@ -477,7 +477,7 @@ User question: {user_question if user_question else 'Please provide relevant med
 Relevant literature content:
 {context}
 
-Please provide ONLY the clinical conclusions and medical recommendations. Do NOT mention paper titles, authors, years, or reference citations in your response. Focus on:
+Please provide ONLY the clinical conclusions and medical recommendations. Do NOT mention paper titles, authors, years, or reference citations in your response. Do NOT start with "Clinical analysis:" or any header. Focus on:
 
 1. Clinical findings and conclusions from the research
 2. How these findings relate to the patient's condition
@@ -485,7 +485,7 @@ Please provide ONLY the clinical conclusions and medical recommendations. Do NOT
 4. Risk factors and prognosis
 5. Treatment considerations
 
-Write as a clinical summary that directly addresses the patient's condition without mentioning the source papers."""
+Start directly with the clinical content without any introductory phrases or headers."""
         
         try:
             response = self.client.chat.completions.create(
