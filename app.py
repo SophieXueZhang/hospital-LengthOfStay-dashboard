@@ -756,25 +756,51 @@ def show_patient_detail(patient_id, df):
                         # Display relevant papers separately (remove duplicates)
                         if relevant_papers:
                             st.markdown("**Supporting Evidence:**")
-                            unique_titles = []
+                            unique_filenames = []
                             for paper in relevant_papers[:3]:
-                                if paper['title'] not in unique_titles:
-                                    unique_titles.append(paper['title'])
-                                    
-                                    # Extract year and author from filename and content
-                                    year, author = rag_system.extract_paper_metadata(paper.get('filename', ''), paper.get('chunk_text', ''))
-                                    
-                                    # Format citation
-                                    citation = paper['title']
+                                filename = paper.get('filename', '')
+                                if filename not in unique_filenames:
+                                    unique_filenames.append(filename)
+
+                                    # Get paper metadata from database
+                                    title = paper.get('title', filename.replace('.pdf', '').replace('.txt', ''))
+                                    author = paper.get('authors', 'Unknown')
+                                    year = paper.get('year', 'Unknown')
+
+                                    # Format citation: Filename (Author, Year)
+                                    # Clean filename for display - 不截断文件名
+                                    display_filename = filename.replace('.pdf', '').replace('.txt', '')
+
+                                    # 构建完整引用：文件名 (作者, 年份)
                                     citation_parts = []
-                                    if author:
-                                        citation_parts.append(author)
-                                    if year:
-                                        citation_parts.append(year)
+
+                                    # 处理作者信息 - 更宽松的条件
+                                    if author and author != 'Unknown' and author.strip() and author != 'affiliations':
+                                        citation_parts.append(author.strip())
+
+                                    # 处理年份信息 - 更宽松的条件
+                                    if year and year is not None and str(year) != 'Unknown' and str(year) != 'nan' and str(year) != 'None':
+                                        citation_parts.append(str(year))
+
+                                    # 格式：文件名 (作者, 年份) 或 文件名 (年份) 或 文件名
                                     if citation_parts:
-                                        citation += f" ({', '.join(citation_parts)})"
-                                    
-                                    st.markdown(f"• {citation}")
+                                        citation = f"{display_filename} ({', '.join(citation_parts)})"
+                                    else:
+                                        citation = display_filename
+
+                                    # 使用自动换行的HTML，超出宽度自动下一行
+                                    st.markdown(f"""
+                                    <div style="
+                                        margin-bottom: 8px;
+                                        word-wrap: break-word;
+                                        word-break: break-word;
+                                        white-space: normal;
+                                        overflow-wrap: anywhere;
+                                        line-height: 1.4;
+                                    ">
+                                        • {citation}
+                                    </div>
+                                    """, unsafe_allow_html=True)
                     else:
                         st.info("Ask questions in the chat to get evidence-based insights for this patient.")
                         

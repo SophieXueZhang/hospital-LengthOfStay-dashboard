@@ -287,22 +287,39 @@ class RAGSystem:
         """在轻量数据库中基于关键词搜索"""
         query_lower = query.lower()
 
-        # 获取所有论文
-        cursor.execute('SELECT filename, title, author, year, chunk_text, keywords FROM paper_chunks')
+        # 获取所有论文 - 使用正确的字段名
+        cursor.execute('SELECT filename, title, authors, year, chunk_text FROM paper_chunks')
         all_papers = cursor.fetchall()
 
         scored_papers = []
 
         for paper in all_papers:
-            filename, title, author, year, chunk_text, keywords = paper
+            filename, title, authors, year, chunk_text = paper
             score = 0
 
-            # 基于关键词匹配计分
-            if keywords:
-                keywords_list = [k.strip().lower() for k in keywords.split(',')]
-                for keyword in keywords_list:
-                    if keyword in query_lower:
-                        score += 10
+            # 基于内容匹配计分
+            content_lower = (chunk_text or '').lower()
+            title_lower = (title or '').lower()
+
+            # 医学关键词匹配
+            medical_keywords = [
+                'anemia', 'pneumonia', 'diabetes', 'kidney', 'renal', 'asthma',
+                'depression', 'length of stay', 'hospital', 'readmission',
+                'mortality', 'complications', 'treatment', 'diagnosis',
+                'creatinine', 'glucose', 'hematocrit', 'blood', 'medication'
+            ]
+
+            # 检查查询词是否在标题中 (高权重)
+            for word in query_lower.split():
+                if word in title_lower:
+                    score += 15
+                if word in content_lower:
+                    score += 5
+
+            # 检查医学关键词匹配
+            for keyword in medical_keywords:
+                if keyword in query_lower and keyword in content_lower:
+                    score += 8
 
             # 基于标题匹配计分
             if title:
@@ -325,7 +342,7 @@ class RAGSystem:
                 scored_papers.append({
                     'filename': filename,
                     'title': title,
-                    'author': author,
+                    'authors': authors,  # 修正字段名
                     'year': year,
                     'chunk_text': chunk_text,
                     'score': score
@@ -411,19 +428,34 @@ class RAGSystem:
             score_threshold = 0.8 if 'similarity' in paper else 5  # Different thresholds for different systems
 
             if paper_score >= score_threshold and paper['title'] not in seen_titles:
-                # Extract year and author from filename and content if available
-                year, author = self.extract_paper_metadata(paper['filename'], paper['chunk_text'])
+                # 优先使用数据库中的元数据，如果没有再从文件名提取
+                author = paper.get('authors', 'Unknown')
+                year = paper.get('year', None)
+
+                # 如果数据库中没有，再尝试从文件名和内容提取
+                if not author or author == 'Unknown':
+                    extracted_year, extracted_author = self.extract_paper_metadata(paper['filename'], paper['chunk_text'])
+                    if extracted_author:
+                        author = extracted_author
+                    if extracted_year and not year:
+                        year = extracted_year
                 metadata_str = ""
                 if year or author:
                     metadata_parts = []
                     if author:
-                        metadata_parts.append(author)
+                        metadata_parts.append(str(author))
                     if year:
-                        metadata_parts.append(year)
+                        metadata_parts.append(str(year))
                     metadata_str = f" ({', '.join(metadata_parts)})"
                 
                 score_text = f"similarity: {paper_score:.3f}" if 'similarity' in paper else f"relevance score: {paper_score}"
-                context_texts.append(f"From paper '{paper['title']}'{metadata_str} ({score_text}): {paper['chunk_text'][:800]}...")
+                # 只添加纯文本内容到context，不包含论文标题和元数据
+                context_texts.append(paper['chunk_text'][:800])
+
+                # 确保paper对象包含完整的元数据信息
+                paper['authors'] = author  # 确保authors字段存在
+                paper['year'] = year       # 确保year字段存在
+
                 paper_references.append({
                     'title': paper['title'],
                     'year': year,
@@ -436,7 +468,7 @@ class RAGSystem:
         context = "\n\n".join(context_texts)
         
         # 生成回答
-        prompt = f"""Based on the following medical literature content, answer questions about the patient.
+        prompt = f"""Based on the following medical literature content, provide a clinical analysis for the patient.
 
 Patient symptom keywords: {', '.join(symptoms)}
 Diagnostic basis: {'; '.join(diagnostic_info)}
@@ -445,14 +477,15 @@ User question: {user_question if user_question else 'Please provide relevant med
 Relevant literature content:
 {context}
 
-Please provide comprehensive and detailed medical analysis and recommendations based on the above literature content. Please ensure:
-1. Synthesize all provided high-similarity literature content (similarity ≥ 0.8)
-2. Analyze the core findings of each relevant paper in detail
-3. Associate literature conclusions with the patient's specific symptoms and diagnostic basis
-4. Provide evidence-based medical recommendations and treatment guidance
-5. Do not limit the response length, please provide complete and detailed analysis
+Please provide ONLY the clinical conclusions and medical recommendations. Do NOT mention paper titles, authors, years, or reference citations in your response. Focus on:
 
-If the literature content is insufficient to answer the question, please indicate that more information is needed."""
+1. Clinical findings and conclusions from the research
+2. How these findings relate to the patient's condition
+3. Evidence-based medical recommendations
+4. Risk factors and prognosis
+5. Treatment considerations
+
+Write as a clinical summary that directly addresses the patient's condition without mentioning the source papers."""
         
         try:
             response = self.client.chat.completions.create(
@@ -465,26 +498,8 @@ If the literature content is insufficient to answer the question, please indicat
             )
             
             ai_response = response.choices[0].message.content
-            
-            # Add references with author and year
-            if paper_references:
-                ai_response += f"\n\nReferences:\n"
-                for ref in paper_references:
-                    if isinstance(ref, dict):
-                        # Format: Title (Author, Year) or Title (Year) or just Title
-                        ref_str = f"• {ref['title']}"
-                        citation_parts = []
-                        if ref.get('author'):
-                            citation_parts.append(ref['author'])
-                        if ref.get('year'):
-                            citation_parts.append(ref['year'])
-                        if citation_parts:
-                            ref_str += f" ({', '.join(citation_parts)})"
-                        ai_response += f"\n{ref_str}"
-                    else:
-                        # Fallback for old format
-                        ai_response += f"\n• {ref}"
-            
+
+            # 不在这里添加引用，让app.py单独处理
             return ai_response, relevant_papers, diagnostic_info
             
         except Exception as e:
