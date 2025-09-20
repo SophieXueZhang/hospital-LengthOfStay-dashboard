@@ -1760,149 +1760,24 @@ def show_patient_detail(patient_id, df):
                 window.currentSpeechText = '';
 
                 console.log('✅ Voice script loaded - all functionality embedded in buttons');
-                </script>
 
-                <div style="margin: 10px 0; padding: 15px; background: #f0f2f6; border-radius: 8px;">
-                    <button onclick="
-                        document.getElementById('speechStatus').innerHTML = '🔍 Checking browser support...';
-
-                    // Enhanced environment detection for speech recognition
-                    console.log('Current protocol:', location.protocol);
-                    console.log('Current hostname:', location.hostname);
-                    console.log('Current href:', location.href);
-                    console.log('User agent:', navigator.userAgent);
-
-                    // Check if we're in a supported environment
-                    const isHTTPS = location.protocol === 'https:';
-                    const isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-                    const isPrivateNetwork = location.hostname.startsWith('192.168.') ||
-                                           location.hostname.startsWith('10.') ||
-                                           location.hostname.startsWith('172.16.');
-                    const isEmbeddedOrSpecial = location.protocol === 'about:' ||
-                                               location.protocol === 'file:' ||
-                                               location.protocol === 'moz-extension:' ||
-                                               location.protocol === 'chrome-extension:';
-
-                    console.log('Environment check:', {{
-                        isHTTPS: isHTTPS,
-                        isLocalhost: isLocalhost,
-                        isPrivateNetwork: isPrivateNetwork,
-                        isEmbeddedOrSpecial: isEmbeddedOrSpecial
-                    }});
-
-                    // Allow speech recognition if any of these conditions are met:
-                    // 1. HTTPS
-                    // 2. Localhost/127.0.0.1
-                    // 3. Private network
-                    // 4. Embedded environment (about:// etc.) - often used in some browsers
-                    const isAllowedEnvironment = isHTTPS || isLocalhost || isPrivateNetwork || isEmbeddedOrSpecial;
-
-                    if (!isAllowedEnvironment) {{
-                        document.getElementById('speechStatus').innerHTML =
-                            '⚠️ Speech recognition requires HTTPS or localhost.<br>' +
-                            'Current: ' + location.protocol + '//' + location.hostname + '<br>' +
-                            'Try accessing via https:// or localhost';
-                        document.getElementById('speechStatus').style.color = '#ff9800';
-                        return;
+                // Additional speech recognition functions
+                window.stopSpeechRecognition = function() {{
+                    if (window.recognition) {{
+                        window.recognition.stop();
                     }}
+                }};
 
-                    console.log('Environment check passed - proceeding with speech recognition');
+                window.resetSpeechButtons = function() {{
+                    const startBtn = document.getElementById('startSpeech');
+                    const stopBtn = document.getElementById('stopSpeech');
+                    if (startBtn) startBtn.disabled = false;
+                    if (stopBtn) stopBtn.disabled = true;
+                }};
 
-                    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {{
-                        document.getElementById('speechStatus').innerHTML = '✅ Speech recognition supported, starting...';
-                        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-                        try {{
-                            recognition = new SpeechRecognition();
-                            console.log('SpeechRecognition object created successfully');
-
-                            recognition.continuous = false;
-                            recognition.interimResults = false;
-                            recognition.lang = 'en-US';
-
-                            recognition.onstart = function() {{
-                                console.log('Speech recognition started');
-                                document.getElementById('startSpeech').disabled = true;
-                                document.getElementById('stopSpeech').disabled = false;
-                                document.getElementById('speechStatus').innerHTML = '🎧 Listening... Please speak now!';
-                                document.getElementById('speechStatus').style.color = '#ff4b4b';
-                                document.getElementById('speechResult').innerHTML = '<em>Listening...</em>';
-                            }};
-
-                            recognition.onresult = function(event) {{
-                                console.log('Speech recognition result received:', event);
-                                const text = event.results[0][0].transcript;
-                                const confidence = event.results[0][0].confidence;
-                                currentSpeechText = text;
-                                document.getElementById('speechResult').innerHTML = '<strong>Recognized:</strong> ' + text +
-                                    ' <small>(confidence: ' + (confidence ? (confidence * 100).toFixed(1) + '%' : 'N/A') + ')</small>';
-                                document.getElementById('speechStatus').innerHTML = '✅ Speech recognition completed!';
-                                document.getElementById('speechStatus').style.color = '#00c851';
-                                document.getElementById('useSpeech').style.display = 'inline-block';
-                            }};
-
-                            recognition.onerror = function(event) {{
-                                console.error('Speech recognition error:', event);
-                                let errorMsg = 'Unknown error';
-                                switch(event.error) {{
-                                    case 'no-speech':
-                                        errorMsg = 'No speech detected. Please try again.';
-                                        break;
-                                    case 'audio-capture':
-                                        errorMsg = 'Audio capture failed. Check your microphone.';
-                                        break;
-                                    case 'not-allowed':
-                                        errorMsg = 'Microphone access denied. Please allow microphone access.';
-                                        break;
-                                    case 'network':
-                                        errorMsg = 'Network error. Check your internet connection.';
-                                        break;
-                                    case 'service-not-allowed':
-                                        errorMsg = 'Speech service not allowed. Try using HTTPS.';
-                                        break;
-                                    default:
-                                        errorMsg = event.error;
-                                }}
-                                document.getElementById('speechStatus').innerHTML = '❌ Error: ' + errorMsg;
-                                document.getElementById('speechStatus').style.color = '#ff4444';
-                                resetSpeechButtons();
-                            }};
-
-                            recognition.onend = function() {{
-                                console.log('Speech recognition ended');
-                                resetSpeechButtons();
-                            }};
-
-                            console.log('Starting speech recognition...');
-                            document.getElementById('speechStatus').innerHTML = '🎤 Starting microphone...';
-                            recognition.start();
-
-                        }} catch (error) {{
-                            console.error('Error creating/starting speech recognition:', error);
-                            document.getElementById('speechStatus').innerHTML = '❌ Failed to start: ' + error.message;
-                            document.getElementById('speechStatus').style.color = '#ff4444';
-                            resetSpeechButtons();
-                        }}
-                    }} else {{
-                        document.getElementById('speechStatus').innerHTML = '❌ Speech recognition not supported in this browser';
-                        document.getElementById('speechStatus').style.color = '#ff4444';
-                    }}
-                }}
-
-                function stopSpeechRecognition() {{
-                    if (recognition) {{
-                        recognition.stop();
-                    }}
-                }}
-
-                function resetSpeechButtons() {{
-                    document.getElementById('startSpeech').disabled = false;
-                    document.getElementById('stopSpeech').disabled = true;
-                }}
-
-                function useSpeechResult() {{
-                    if (currentSpeechText) {{
-                        console.log('Using speech result:', currentSpeechText);
+                window.useSpeechResult = function() {{
+                    if (window.currentSpeechText) {{
+                        console.log('Using speech result:', window.currentSpeechText);
                         document.getElementById('speechStatus').innerHTML = '🔍 Finding input field...';
 
                         // Enhanced input field detection with comprehensive strategies
@@ -2046,7 +1921,7 @@ def show_patient_detail(patient_id, df):
                             targetInput.value = '';
 
                             // Set new value
-                            targetInput.value = currentSpeechText;
+                            targetInput.value = window.currentSpeechText;
                             targetInput.focus();
 
                             // Comprehensive event triggering for maximum compatibility
@@ -2072,7 +1947,7 @@ def show_patient_detail(patient_id, df):
                                 const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
                                     window.HTMLInputElement.prototype, 'value'
                                 ).set;
-                                nativeInputValueSetter.call(targetInput, currentSpeechText);
+                                nativeInputValueSetter.call(targetInput, window.currentSpeechText);
 
                                 const reactEvent = new Event('input', {{ bubbles: true }});
                                 reactEvent.simulated = true;
@@ -2085,22 +1960,22 @@ def show_patient_detail(patient_id, df):
                             document.getElementById('speechStatus').style.color = '#00c851';
 
                             console.log('Text inserted into input field:', targetInput);
-                            debugInfo.push(`✅ FINAL SUCCESS: Text "${{currentSpeechText}}" inserted`);
+                            debugInfo.push(`✅ FINAL SUCCESS: Text "${{window.currentSpeechText}}" inserted`);
                         }} else {{
                             // Enhanced fallback with clipboard copy
                             document.getElementById('speechStatus').innerHTML = '🔄 Auto-insert failed. Trying clipboard...';
 
                             if (navigator.clipboard && navigator.clipboard.writeText) {{
-                                navigator.clipboard.writeText(currentSpeechText).then(() => {{
+                                navigator.clipboard.writeText(window.currentSpeechText).then(() => {{
                                     document.getElementById('speechStatus').innerHTML = '✅ Copied to clipboard! Paste with Ctrl+V/Cmd+V';
                                     document.getElementById('speechStatus').style.color = '#00c851';
                                 }}).catch(err => {{
                                     console.error('Clipboard failed:', err);
-                                    document.getElementById('speechStatus').innerHTML = '⚠️ Manual copy needed. Text: ' + currentSpeechText;
+                                    document.getElementById('speechStatus').innerHTML = '⚠️ Manual copy needed. Text: ' + window.currentSpeechText;
                                     document.getElementById('speechStatus').style.color = '#ff9800';
                                 }});
                             }} else {{
-                                document.getElementById('speechStatus').innerHTML = '⚠️ Manual copy needed. Text: ' + currentSpeechText;
+                                document.getElementById('speechStatus').innerHTML = '⚠️ Manual copy needed. Text: ' + window.currentSpeechText;
                                 document.getElementById('speechStatus').style.color = '#ff9800';
                             }}
 
@@ -2112,18 +1987,142 @@ def show_patient_detail(patient_id, df):
                                 debugInfo.join('<br>') +
                                 '<br><br><strong>📋 Text to copy:</strong><br>' +
                                 '<div style="background:#f0f0f0; padding:8px; border-radius:4px; user-select:all; cursor:text;" onclick="this.focus(); document.execCommand(\'selectAll\');">' +
-                                currentSpeechText +
+                                window.currentSpeechText +
                                 '</div>';
                         }}
                     }}
-                }}
+                }};
+
+                window.startSpeechRecognitionBasic = function() {{
+                    document.getElementById('speechStatus').innerHTML = '🔍 Checking browser support...';
+
+                    // Enhanced environment detection for speech recognition
+                    console.log('Current protocol:', location.protocol);
+                    console.log('Current hostname:', location.hostname);
+                    console.log('Current href:', location.href);
+                    console.log('User agent:', navigator.userAgent);
+
+                    // Check if we're in a supported environment
+                    const isHTTPS = location.protocol === 'https:';
+                    const isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+                    const isPrivateNetwork = location.hostname.startsWith('192.168.') ||
+                                           location.hostname.startsWith('10.') ||
+                                           location.hostname.startsWith('172.16.');
+                    const isEmbeddedOrSpecial = location.protocol === 'about:' ||
+                                               location.protocol === 'file:' ||
+                                               location.protocol === 'moz-extension:' ||
+                                               location.protocol === 'chrome-extension:';
+
+                    console.log('Environment check:', {{
+                        isHTTPS: isHTTPS,
+                        isLocalhost: isLocalhost,
+                        isPrivateNetwork: isPrivateNetwork,
+                        isEmbeddedOrSpecial: isEmbeddedOrSpecial
+                    }});
+
+                    // Allow speech recognition if any of these conditions are met:
+                    const isAllowedEnvironment = isHTTPS || isLocalhost || isPrivateNetwork || isEmbeddedOrSpecial;
+
+                    if (!isAllowedEnvironment) {{
+                        document.getElementById('speechStatus').innerHTML =
+                            '⚠️ Speech recognition requires HTTPS or localhost.<br>' +
+                            'Current: ' + location.protocol + '//' + location.hostname + '<br>' +
+                            'Try accessing via https:// or localhost';
+                        document.getElementById('speechStatus').style.color = '#ff9800';
+                        return;
+                    }}
+
+                    console.log('Environment check passed - proceeding with speech recognition');
+
+                    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {{
+                        document.getElementById('speechStatus').innerHTML = '✅ Speech recognition supported, starting...';
+                        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+                        try {{
+                            window.recognition = new SpeechRecognition();
+                            console.log('SpeechRecognition object created successfully');
+
+                            window.recognition.continuous = false;
+                            window.recognition.interimResults = false;
+                            window.recognition.lang = 'en-US';
+
+                            window.recognition.onstart = function() {{
+                                console.log('Speech recognition started');
+                                const startBtn = document.getElementById('startSpeech');
+                                const stopBtn = document.getElementById('stopSpeech');
+                                if (startBtn) startBtn.disabled = true;
+                                if (stopBtn) stopBtn.disabled = false;
+                                document.getElementById('speechStatus').innerHTML = '🎧 Listening... Please speak now!';
+                                document.getElementById('speechStatus').style.color = '#ff4b4b';
+                                document.getElementById('speechResult').innerHTML = '<em>Listening...</em>';
+                            }};
+
+                            window.recognition.onresult = function(event) {{
+                                console.log('Speech recognition result received:', event);
+                                const text = event.results[0][0].transcript;
+                                const confidence = event.results[0][0].confidence;
+                                window.currentSpeechText = text;
+                                document.getElementById('speechResult').innerHTML = '<strong>Recognized:</strong> ' + text +
+                                    ' <small>(confidence: ' + (confidence ? (confidence * 100).toFixed(1) + '%' : 'N/A') + ')</small>';
+                                document.getElementById('speechStatus').innerHTML = '✅ Speech recognition completed!';
+                                document.getElementById('speechStatus').style.color = '#00c851';
+                                document.getElementById('useSpeech').style.display = 'inline-block';
+                            }};
+
+                            window.recognition.onerror = function(event) {{
+                                console.error('Speech recognition error:', event);
+                                let errorMsg = 'Unknown error';
+                                switch(event.error) {{
+                                    case 'no-speech':
+                                        errorMsg = 'No speech detected. Please try again.';
+                                        break;
+                                    case 'audio-capture':
+                                        errorMsg = 'Audio capture failed. Check your microphone.';
+                                        break;
+                                    case 'not-allowed':
+                                        errorMsg = 'Microphone access denied. Please allow microphone access.';
+                                        break;
+                                    case 'network':
+                                        errorMsg = 'Network error. Check your internet connection.';
+                                        break;
+                                    case 'service-not-allowed':
+                                        errorMsg = 'Speech service not allowed. Try using HTTPS.';
+                                        break;
+                                    default:
+                                        errorMsg = event.error;
+                                }}
+                                document.getElementById('speechStatus').innerHTML = '❌ Error: ' + errorMsg;
+                                document.getElementById('speechStatus').style.color = '#ff4444';
+                                window.resetSpeechButtons();
+                            }};
+
+                            window.recognition.onend = function() {{
+                                console.log('Speech recognition ended');
+                                window.resetSpeechButtons();
+                            }};
+
+                            console.log('Starting speech recognition...');
+                            document.getElementById('speechStatus').innerHTML = '🎤 Starting microphone...';
+                            window.recognition.start();
+
+                        }} catch (error) {{
+                            console.error('Error creating/starting speech recognition:', error);
+                            document.getElementById('speechStatus').innerHTML = '❌ Failed to start: ' + error.message;
+                            document.getElementById('speechStatus').style.color = '#ff4444';
+                            window.resetSpeechButtons();
+                        }}
+                    }} else {{
+                        document.getElementById('speechStatus').innerHTML = '❌ Speech recognition not supported in this browser';
+                        document.getElementById('speechStatus').style.color = '#ff4444';
+                    }}
+                }};
 
                 // Initialize and verify all functions are loaded
                 function initializeVoiceInterface() {{
                     console.log('Initializing voice interface...');
 
                     // Check if all required functions are available
-                    var functionsToCheck = ['startSpeechRecognition', 'stopSpeechRecognition', 'useSpeechResult', 'testFunction'];
+                    var functionsToCheck = ['startSpeechRecognitionBasic', 'stopSpeechRecognition', 'useSpeechResult', 'testFunction'];
                     var allFunctionsAvailable = true;
 
                     for (var i = 0; i < functionsToCheck.length; i++) {{
@@ -2165,283 +2164,12 @@ def show_patient_detail(patient_id, df):
                         🎤 Test Click
                     </button>
 
-                    <button id="startSpeech" onclick="
-                        console.log('Voice button clicked!');
-
-                        // Embedded robust voice recognition with progressive retry
-                        (function() {{
-                            let retryCount = 0;
-                            const maxRetries = 5;
-                            const baseDelay = 100;
-                            let recognition = null;
-                            let currentSpeechText = '';
-
-                            function updateStatus(message, color = '#666', includeRetry = false) {{
-                                const statusEl = document.getElementById('speechStatus');
-                                if (statusEl) {{
-                                    const retryText = includeRetry && retryCount > 0 ? ` (Attempt ${{retryCount + 1}}/${{maxRetries + 1}})` : '';
-                                    statusEl.innerHTML = message + retryText;
-                                    statusEl.style.color = color;
-                                }}
-                            }}
-
-                            function resetSpeechButtons() {{
-                                const startBtn = document.getElementById('startSpeech');
-                                const stopBtn = document.getElementById('stopSpeech');
-                                if (startBtn) startBtn.disabled = false;
-                                if (stopBtn) stopBtn.disabled = true;
-                            }}
-
-                            function checkEnvironmentAndStartRecognition() {{
-                                updateStatus('🔍 Checking browser support...', '#666', true);
-
-                                // Enhanced environment detection
-                                const isHTTPS = location.protocol === 'https:';
-                                const isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-                                const isPrivateNetwork = location.hostname.startsWith('192.168.') ||
-                                                       location.hostname.startsWith('10.') ||
-                                                       location.hostname.startsWith('172.16.');
-                                const isEmbeddedOrSpecial = location.protocol === 'about:' ||
-                                                           location.protocol === 'file:' ||
-                                                           location.protocol === 'moz-extension:' ||
-                                                           location.protocol === 'chrome-extension:';
-
-                                const isAllowedEnvironment = isHTTPS || isLocalhost || isPrivateNetwork || isEmbeddedOrSpecial;
-
-                                if (!isAllowedEnvironment) {{
-                                    updateStatus(
-                                        '⚠️ Speech recognition requires HTTPS or localhost.<br>' +
-                                        'Current: ' + location.protocol + '//' + location.hostname + '<br>' +
-                                        'Try accessing via https:// or localhost',
-                                        '#ff9800'
-                                    );
-                                    return false;
-                                }}
-
-                                // Check for Speech Recognition API
-                                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                                if (!SpeechRecognition) {{
-                                    updateStatus('❌ Speech recognition not supported in this browser', '#ff4444');
-                                    return false;
-                                }}
-
-                                try {{
-                                    recognition = new SpeechRecognition();
-                                    recognition.continuous = false;
-                                    recognition.interimResults = false;
-                                    recognition.lang = 'en-US';
-
-                                    recognition.onstart = function() {{
-                                        console.log('Speech recognition started');
-                                        const startBtn = document.getElementById('startSpeech');
-                                        const stopBtn = document.getElementById('stopSpeech');
-                                        if (startBtn) startBtn.disabled = true;
-                                        if (stopBtn) stopBtn.disabled = false;
-                                        updateStatus('🎧 Listening... Please speak now!', '#ff4b4b');
-                                        const resultEl = document.getElementById('speechResult');
-                                        if (resultEl) resultEl.innerHTML = '<em>Listening...</em>';
-                                    }};
-
-                                    recognition.onresult = function(event) {{
-                                        const text = event.results[0][0].transcript;
-                                        const confidence = event.results[0][0].confidence;
-                                        currentSpeechText = text;
-
-                                        const resultEl = document.getElementById('speechResult');
-                                        if (resultEl) {{
-                                            resultEl.innerHTML = '<strong>Recognized:</strong> ' + text +
-                                                ' <small>(confidence: ' + (confidence ? (confidence * 100).toFixed(1) + '%' : 'N/A') + ')</small>';
-                                        }}
-
-                                        updateStatus('✅ Speech recognition completed!', '#00c851');
-
-                                        const useBtn = document.getElementById('useSpeech');
-                                        if (useBtn) useBtn.style.display = 'inline-block';
-
-                                        // Auto-insert into chat input
-                                        setTimeout(function() {{
-                                            insertTextIntoInput(text);
-                                        }}, 500);
-                                    }};
-
-                                    recognition.onerror = function(event) {{
-                                        console.error('Speech recognition error:', event);
-                                        let errorMsg = 'Unknown error';
-                                        switch(event.error) {{
-                                            case 'no-speech':
-                                                errorMsg = 'No speech detected. Please try again.';
-                                                break;
-                                            case 'audio-capture':
-                                                errorMsg = 'Audio capture failed. Check your microphone.';
-                                                break;
-                                            case 'not-allowed':
-                                                errorMsg = 'Microphone access denied. Please allow microphone access.';
-                                                break;
-                                            case 'network':
-                                                errorMsg = 'Network error. Check your internet connection.';
-                                                break;
-                                            case 'service-not-allowed':
-                                                errorMsg = 'Speech service not allowed. Try using HTTPS.';
-                                                break;
-                                            default:
-                                                errorMsg = event.error;
-                                        }}
-                                        updateStatus('❌ Error: ' + errorMsg, '#ff4444');
-                                        resetSpeechButtons();
-                                    }};
-
-                                    recognition.onend = function() {{
-                                        console.log('Speech recognition ended');
-                                        resetSpeechButtons();
-                                    }};
-
-                                    updateStatus('🎤 Starting microphone...', '#666');
-                                    recognition.start();
-                                    return true;
-
-                                }} catch (error) {{
-                                    console.error('Error creating/starting speech recognition:', error);
-                                    updateStatus('❌ Failed to start: ' + error.message, '#ff4444');
-                                    resetSpeechButtons();
-                                    return false;
-                                }}
-                            }}
-
-                            function insertTextIntoInput(text) {{
-                                // Find Streamlit chat input field
-                                const selectors = [
-                                    'textarea[data-testid=\"stChatInputTextArea\"]',
-                                    'textarea[data-testid=\"chatInput\"]',
-                                    'textarea[aria-label=\"Chat message\"]',
-                                    'input[data-testid=\"chatInput\"]',
-                                    'textarea[placeholder*=\"message\"]',
-                                    'textarea[placeholder*=\"Message\"]',
-                                    'input[placeholder*=\"message\"]',
-                                    'textarea',
-                                    'input[type=\"text\"]'
-                                ];
-
-                                let targetInput = null;
-                                for (const selector of selectors) {{
-                                    targetInput = document.querySelector(selector);
-                                    if (targetInput && targetInput.offsetParent !== null) break;
-                                }}
-
-                                if (targetInput) {{
-                                    targetInput.focus();
-                                    targetInput.value = text;
-
-                                    // Trigger change events
-                                    ['input', 'change', 'keyup'].forEach(eventType => {{
-                                        const event = new Event(eventType, {{ bubbles: true, cancelable: true }});
-                                        targetInput.dispatchEvent(event);
-                                    }});
-
-                                    // React-style event
-                                    try {{
-                                        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-                                            window.HTMLInputElement.prototype, 'value'
-                                        ).set || Object.getOwnPropertyDescriptor(
-                                            window.HTMLTextAreaElement.prototype, 'value'
-                                        ).set;
-
-                                        if (nativeInputValueSetter) {{
-                                            nativeInputValueSetter.call(targetInput, text);
-                                            const reactEvent = new Event('input', {{ bubbles: true }});
-                                            reactEvent.simulated = true;
-                                            targetInput.dispatchEvent(reactEvent);
-                                        }}
-                                    }} catch (e) {{
-                                        console.warn('React-style event failed:', e);
-                                    }}
-
-                                    updateStatus('✅ Text inserted successfully!', '#00c851');
-                                }} else {{
-                                    // Fallback to clipboard
-                                    if (navigator.clipboard && navigator.clipboard.writeText) {{
-                                        navigator.clipboard.writeText(text).then(() => {{
-                                            updateStatus('✅ Copied to clipboard! Paste with Ctrl+V/Cmd+V', '#00c851');
-                                        }}).catch(err => {{
-                                            updateStatus('⚠️ Manual copy needed. Text: ' + text, '#ff9800');
-                                        }});
-                                    }} else {{
-                                        updateStatus('⚠️ Manual copy needed. Text: ' + text, '#ff9800');
-                                    }}
-                                }}
-                            }}
-
-                            function attemptVoiceRecognition() {{
-                                if (retryCount >= maxRetries) {{
-                                    updateStatus('❌ Failed to load after multiple attempts. Please refresh the page.', '#ff4444');
-                                    return;
-                                }}
-
-                                updateStatus('🔄 Loading voice interface...', '#666', true);
-
-                                // Progressive delay: 100ms, 200ms, 400ms, 800ms, 1600ms
-                                const delay = baseDelay * Math.pow(2, retryCount);
-
-                                setTimeout(function() {{
-                                    if (checkEnvironmentAndStartRecognition()) {{
-                                        // Success - reset retry count for next time
-                                        retryCount = 0;
-                                    }} else {{
-                                        // Retry with longer delay
-                                        retryCount++;
-                                        if (retryCount <= maxRetries) {{
-                                            updateStatus('🔄 Retrying in ' + Math.round(delay * 2 / 1000) + 's...', '#ff9800', true);
-                                            setTimeout(attemptVoiceRecognition, delay);
-                                        }}
-                                    }}
-                                }}, delay);
-                            }}
-
-                            // Start the process
-                            attemptVoiceRecognition();
-
-                            // Store recognition and text globally for other functions
-                            window.currentRecognition = recognition;
-                            window.currentSpeechText = currentSpeechText;
-                        }})();
-                    " style="background: #00c851; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px;">
+                    <button id="startSpeech" onclick="window.startSpeechRecognitionBasic();"
+                            style="background: #00c851; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px;">
                         🎤 Start Voice Input
                     </button>
 
-                    <button id="stopSpeech" onclick="
-                        console.log('Stop button clicked');
-                        // Try to stop current recognition
-                        if (window.currentRecognition) {{
-                            try {{
-                                window.currentRecognition.stop();
-                                console.log('Speech recognition stopped via window.currentRecognition');
-                            }} catch (e) {{
-                                console.warn('Failed to stop via window.currentRecognition:', e);
-                            }}
-                        }}
-
-                        // Also try the global recognition variable if it exists
-                        if (typeof recognition !== 'undefined' && recognition) {{
-                            try {{
-                                recognition.stop();
-                                console.log('Speech recognition stopped via global recognition');
-                            }} catch (e) {{
-                                console.warn('Failed to stop via global recognition:', e);
-                            }}
-                        }}
-
-                        // Reset button states
-                        const startBtn = document.getElementById('startSpeech');
-                        const stopBtn = document.getElementById('stopSpeech');
-                        if (startBtn) startBtn.disabled = false;
-                        if (stopBtn) stopBtn.disabled = true;
-
-                        // Update status
-                        const statusEl = document.getElementById('speechStatus');
-                        if (statusEl) {{
-                            statusEl.innerHTML = '⏹️ Voice input stopped';
-                            statusEl.style.color = '#666';
-                        }}
-                    "
+                    <button id="stopSpeech" onclick="window.stopSpeechRecognition();"
                             style="background: #666; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;" disabled>
                         ⏹️ Stop
                     </button>
@@ -2451,98 +2179,7 @@ def show_patient_detail(patient_id, df):
                     <div id="speechResult" style="margin-top: 10px; padding: 10px; background: white; border-radius: 4px; min-height: 40px; border: 1px solid #ddd;">
                         <em>Your speech will appear here...</em>
                     </div>
-                    <button id="useSpeech" onclick="
-                        console.log('Use Speech button clicked');
-
-                        // Get the current speech text from window or extract from result div
-                        let speechText = window.currentSpeechText || '';
-
-                        if (!speechText) {{
-                            // Try to extract from speech result div
-                            const resultEl = document.getElementById('speechResult');
-                            if (resultEl && resultEl.innerHTML) {{
-                                const match = resultEl.innerHTML.match(/<strong>Recognized:<\/strong>\\s*([^<]+)/);
-                                if (match) {{
-                                    speechText = match[1].trim();
-                                }}
-                            }}
-                        }}
-
-                        if (!speechText) {{
-                            document.getElementById('speechStatus').innerHTML = '❌ No speech text available to use';
-                            document.getElementById('speechStatus').style.color = '#ff4444';
-                            return;
-                        }}
-
-                        // Insert text into input field
-                        function insertText(text) {{
-                            const selectors = [
-                                'textarea[data-testid=\"stChatInputTextArea\"]',
-                                'textarea[data-testid=\"chatInput\"]',
-                                'textarea[aria-label=\"Chat message\"]',
-                                'input[data-testid=\"chatInput\"]',
-                                'textarea[placeholder*=\"message\"]',
-                                'textarea[placeholder*=\"Message\"]',
-                                'input[placeholder*=\"message\"]',
-                                'textarea',
-                                'input[type=\"text\"]'
-                            ];
-
-                            let targetInput = null;
-                            for (const selector of selectors) {{
-                                targetInput = document.querySelector(selector);
-                                if (targetInput && targetInput.offsetParent !== null) break;
-                            }}
-
-                            if (targetInput) {{
-                                targetInput.focus();
-                                targetInput.value = text;
-
-                                // Trigger events
-                                ['input', 'change', 'keyup'].forEach(eventType => {{
-                                    const event = new Event(eventType, {{ bubbles: true, cancelable: true }});
-                                    targetInput.dispatchEvent(event);
-                                }});
-
-                                // React-style event
-                                try {{
-                                    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-                                        window.HTMLInputElement.prototype, 'value'
-                                    ).set || Object.getOwnPropertyDescriptor(
-                                        window.HTMLTextAreaElement.prototype, 'value'
-                                    ).set;
-
-                                    if (nativeInputValueSetter) {{
-                                        nativeInputValueSetter.call(targetInput, text);
-                                        const reactEvent = new Event('input', {{ bubbles: true }});
-                                        reactEvent.simulated = true;
-                                        targetInput.dispatchEvent(reactEvent);
-                                    }}
-                                }} catch (e) {{
-                                    console.warn('React-style event failed:', e);
-                                }}
-
-                                document.getElementById('speechStatus').innerHTML = '✅ Text inserted into chat input!';
-                                document.getElementById('speechStatus').style.color = '#00c851';
-                            }} else {{
-                                // Fallback to clipboard
-                                if (navigator.clipboard && navigator.clipboard.writeText) {{
-                                    navigator.clipboard.writeText(text).then(() => {{
-                                        document.getElementById('speechStatus').innerHTML = '✅ Copied to clipboard! Paste with Ctrl+V/Cmd+V';
-                                        document.getElementById('speechStatus').style.color = '#00c851';
-                                    }}).catch(err => {{
-                                        document.getElementById('speechStatus').innerHTML = '⚠️ Manual copy needed. Text: ' + text;
-                                        document.getElementById('speechStatus').style.color = '#ff9800';
-                                    }});
-                                }} else {{
-                                    document.getElementById('speechStatus').innerHTML = '⚠️ Manual copy needed. Text: ' + text;
-                                    document.getElementById('speechStatus').style.color = '#ff9800';
-                                }}
-                            }}
-                        }}
-
-                        insertText(speechText);
-                    "
+                    <button id="useSpeech" onclick="window.useSpeechResult();"
                             style="background: #00c851; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-top: 10px; display: none;">
                         ✅ Use This Text
                     </button>
