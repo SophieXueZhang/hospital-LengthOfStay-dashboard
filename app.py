@@ -1746,68 +1746,142 @@ def show_patient_detail(patient_id, df):
 
             # Display unified speech recognition interface
             html_content = f"""
-                <div style="margin: 10px 0; padding: 15px; background: #f0f2f6; border-radius: 8px;">
-                    <button id="startSpeech" onclick="startSpeechRecognition()"
-                            style="background: #ff4b4b; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px;">
-                        🎤 Start Voice Input
-                    </button>
-                    <button id="stopSpeech" onclick="stopSpeechRecognition()"
-                            style="background: #666; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;" disabled>
-                        ⏹️ Stop
-                    </button>
-                    <div id="speechStatus" style="margin-top: 10px; font-size: 14px; color: #666;">
-                        Click "Start Voice Input" to begin
-                    </div>
-                    <div id="speechResult" style="margin-top: 10px; padding: 10px; background: white; border-radius: 4px; min-height: 40px; border: 1px solid #ddd;">
-                        <em>Your speech will appear here...</em>
-                    </div>
-                    <button id="useSpeech" onclick="useSpeechResult()"
-                            style="background: #00c851; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-top: 10px; display: none;">
-                        ✅ Use This Text
-                    </button>
-                </div>
-
                 <script>
+                // All JavaScript in one block to ensure proper loading
+                console.log('Voice script loading...');
+
+                // Global variables
                 let recognition = null;
                 let currentSpeechText = '';
 
+                // Simple test function
+                function testFunction() {{
+                    console.log('Test function called');
+                    alert('JavaScript is working!');
+                }}
+
+                // Main speech recognition function
                 function startSpeechRecognition() {{
+                    console.log('startSpeechRecognition called');
+                    document.getElementById('speechStatus').innerHTML = '🔍 Checking browser support...';
+
+                    // Enhanced environment detection for speech recognition
+                    console.log('Current protocol:', location.protocol);
+                    console.log('Current hostname:', location.hostname);
+                    console.log('Current href:', location.href);
+                    console.log('User agent:', navigator.userAgent);
+
+                    // Check if we're in a supported environment
+                    const isHTTPS = location.protocol === 'https:';
+                    const isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+                    const isPrivateNetwork = location.hostname.startsWith('192.168.') ||
+                                           location.hostname.startsWith('10.') ||
+                                           location.hostname.startsWith('172.16.');
+                    const isEmbeddedOrSpecial = location.protocol === 'about:' ||
+                                               location.protocol === 'file:' ||
+                                               location.protocol === 'moz-extension:' ||
+                                               location.protocol === 'chrome-extension:';
+
+                    console.log('Environment check:', {{
+                        isHTTPS: isHTTPS,
+                        isLocalhost: isLocalhost,
+                        isPrivateNetwork: isPrivateNetwork,
+                        isEmbeddedOrSpecial: isEmbeddedOrSpecial
+                    }});
+
+                    // Allow speech recognition if any of these conditions are met:
+                    // 1. HTTPS
+                    // 2. Localhost/127.0.0.1
+                    // 3. Private network
+                    // 4. Embedded environment (about:// etc.) - often used in some browsers
+                    const isAllowedEnvironment = isHTTPS || isLocalhost || isPrivateNetwork || isEmbeddedOrSpecial;
+
+                    if (!isAllowedEnvironment) {{
+                        document.getElementById('speechStatus').innerHTML =
+                            '⚠️ Speech recognition requires HTTPS or localhost.<br>' +
+                            'Current: ' + location.protocol + '//' + location.hostname + '<br>' +
+                            'Try accessing via https:// or localhost';
+                        document.getElementById('speechStatus').style.color = '#ff9800';
+                        return;
+                    }}
+
+                    console.log('Environment check passed - proceeding with speech recognition');
+
                     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {{
+                        document.getElementById('speechStatus').innerHTML = '✅ Speech recognition supported, starting...';
                         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                        recognition = new SpeechRecognition();
 
-                        recognition.continuous = false;
-                        recognition.interimResults = false;
-                        recognition.lang = 'en-US';
+                        try {{
+                            recognition = new SpeechRecognition();
+                            console.log('SpeechRecognition object created successfully');
 
-                        recognition.onstart = function() {{
-                            document.getElementById('startSpeech').disabled = true;
-                            document.getElementById('stopSpeech').disabled = false;
-                            document.getElementById('speechStatus').innerHTML = '🎧 Listening... Please speak now!';
-                            document.getElementById('speechStatus').style.color = '#ff4b4b';
-                            document.getElementById('speechResult').innerHTML = '<em>Listening...</em>';
-                        }};
+                            recognition.continuous = false;
+                            recognition.interimResults = false;
+                            recognition.lang = 'en-US';
 
-                        recognition.onresult = function(event) {{
-                            const text = event.results[0][0].transcript;
-                            currentSpeechText = text;
-                            document.getElementById('speechResult').innerHTML = '<strong>Recognized:</strong> ' + text;
-                            document.getElementById('speechStatus').innerHTML = '✅ Speech recognition completed!';
-                            document.getElementById('speechStatus').style.color = '#00c851';
-                            document.getElementById('useSpeech').style.display = 'inline-block';
-                        }};
+                            recognition.onstart = function() {{
+                                console.log('Speech recognition started');
+                                document.getElementById('startSpeech').disabled = true;
+                                document.getElementById('stopSpeech').disabled = false;
+                                document.getElementById('speechStatus').innerHTML = '🎧 Listening... Please speak now!';
+                                document.getElementById('speechStatus').style.color = '#ff4b4b';
+                                document.getElementById('speechResult').innerHTML = '<em>Listening...</em>';
+                            }};
 
-                        recognition.onerror = function(event) {{
-                            document.getElementById('speechStatus').innerHTML = '❌ Error: ' + event.error;
+                            recognition.onresult = function(event) {{
+                                console.log('Speech recognition result received:', event);
+                                const text = event.results[0][0].transcript;
+                                const confidence = event.results[0][0].confidence;
+                                currentSpeechText = text;
+                                document.getElementById('speechResult').innerHTML = '<strong>Recognized:</strong> ' + text +
+                                    ' <small>(confidence: ' + (confidence ? (confidence * 100).toFixed(1) + '%' : 'N/A') + ')</small>';
+                                document.getElementById('speechStatus').innerHTML = '✅ Speech recognition completed!';
+                                document.getElementById('speechStatus').style.color = '#00c851';
+                                document.getElementById('useSpeech').style.display = 'inline-block';
+                            }};
+
+                            recognition.onerror = function(event) {{
+                                console.error('Speech recognition error:', event);
+                                let errorMsg = 'Unknown error';
+                                switch(event.error) {{
+                                    case 'no-speech':
+                                        errorMsg = 'No speech detected. Please try again.';
+                                        break;
+                                    case 'audio-capture':
+                                        errorMsg = 'Audio capture failed. Check your microphone.';
+                                        break;
+                                    case 'not-allowed':
+                                        errorMsg = 'Microphone access denied. Please allow microphone access.';
+                                        break;
+                                    case 'network':
+                                        errorMsg = 'Network error. Check your internet connection.';
+                                        break;
+                                    case 'service-not-allowed':
+                                        errorMsg = 'Speech service not allowed. Try using HTTPS.';
+                                        break;
+                                    default:
+                                        errorMsg = event.error;
+                                }}
+                                document.getElementById('speechStatus').innerHTML = '❌ Error: ' + errorMsg;
+                                document.getElementById('speechStatus').style.color = '#ff4444';
+                                resetSpeechButtons();
+                            }};
+
+                            recognition.onend = function() {{
+                                console.log('Speech recognition ended');
+                                resetSpeechButtons();
+                            }};
+
+                            console.log('Starting speech recognition...');
+                            document.getElementById('speechStatus').innerHTML = '🎤 Starting microphone...';
+                            recognition.start();
+
+                        }} catch (error) {{
+                            console.error('Error creating/starting speech recognition:', error);
+                            document.getElementById('speechStatus').innerHTML = '❌ Failed to start: ' + error.message;
                             document.getElementById('speechStatus').style.color = '#ff4444';
                             resetSpeechButtons();
-                        }};
-
-                        recognition.onend = function() {{
-                            resetSpeechButtons();
-                        }};
-
-                        recognition.start();
+                        }}
                     }} else {{
                         document.getElementById('speechStatus').innerHTML = '❌ Speech recognition not supported in this browser';
                         document.getElementById('speechStatus').style.color = '#ff4444';
@@ -1827,6 +1901,9 @@ def show_patient_detail(patient_id, df):
 
                 function useSpeechResult() {{
                     if (currentSpeechText) {{
+                        console.log('Using speech result:', currentSpeechText);
+                        document.getElementById('speechStatus').innerHTML = '🔍 Finding input field...';
+
                         // Multiple strategies to find the text input field
                         let targetInput = null;
                         let debugInfo = [];
@@ -1856,66 +1933,34 @@ def show_patient_detail(patient_id, df):
 
                         // Strategy 1: Look for input with "Ask about" placeholder
                         if (!targetInput) {{
-                            const textInputs = document.querySelectorAll('input[type="text"]');
+                            const textInputs = document.querySelectorAll('input[type="text"], textarea');
                             debugInfo.push(`Found ${{textInputs.length}} text inputs`);
 
                             for (let input of textInputs) {{
-                            debugInfo.push(`Input placeholder: "${{input.placeholder || 'none'}}"`);
-                            if (input.placeholder && input.placeholder.includes('Ask about')) {{
-                                targetInput = input;
-                                debugInfo.push('✅ Strategy 1 success: Found "Ask about" placeholder');
-                                break;
-                            }}
-                        }}
-                        }}
-
-                        // Strategy 2: Look for the most recent text input (likely the chat input)
-                        if (!targetInput && textInputs.length > 0) {{
-                            targetInput = textInputs[textInputs.length - 1];
-                            debugInfo.push('✅ Strategy 2 success: Using last text input');
-                        }}
-
-                        // Strategy 3: Look for input with specific data attributes (Streamlit specific)
-                        if (!targetInput) {{
-                            const streamlitInputs = document.querySelectorAll('input[data-testid*="text"], input[aria-label*="text"], input[class*="st-"]');
-                            debugInfo.push(`Found ${{streamlitInputs.length}} Streamlit-style inputs`);
-                            if (streamlitInputs.length > 0) {{
-                                targetInput = streamlitInputs[streamlitInputs.length - 1];
-                                debugInfo.push('✅ Strategy 3 success: Using Streamlit input');
-                            }}
-                        }}
-
-                        // Strategy 4: Look for any input in a form that contains "Send" button
-                        if (!targetInput) {{
-                            const forms = document.querySelectorAll('form');
-                            debugInfo.push(`Found ${{forms.length}} forms`);
-                            for (let form of forms) {{
-                                const sendButton = form.querySelector('button');
-                                if (sendButton && sendButton.textContent.includes('Send')) {{
-                                    const formInput = form.querySelector('input[type="text"]');
-                                    if (formInput) {{
-                                        targetInput = formInput;
-                                        debugInfo.push('✅ Strategy 4 success: Found input in form with Send button');
-                                        break;
-                                    }}
-                                }}
-                            }}
-                        }}
-
-                        // Strategy 5: Look for any visible input that's not hidden
-                        if (!targetInput) {{
-                            const allInputs = document.querySelectorAll('input');
-                            debugInfo.push(`Found ${{allInputs.length}} total inputs`);
-                            for (let input of allInputs) {{
-                                const style = window.getComputedStyle(input);
-                                if (style.display !== 'none' && style.visibility !== 'hidden' &&
-                                    input.type !== 'hidden' && input.offsetWidth > 0 && input.offsetHeight > 0) {{
+                                debugInfo.push(`Input placeholder: "${{input.placeholder || 'none'}}"`);
+                                if (input.placeholder && (
+                                    input.placeholder.includes('Ask about') ||
+                                    input.placeholder.includes('Type a message') ||
+                                    input.placeholder.includes('Enter your question') ||
+                                    input.placeholder.toLowerCase().includes('chat')
+                                )) {{
                                     targetInput = input;
-                                    debugInfo.push('✅ Strategy 5 success: Found visible input');
+                                    debugInfo.push('✅ Strategy 1 success: Found chat placeholder');
                                     break;
                                 }}
                             }}
                         }}
+
+                        // Strategy 2: Look for the most recent text input (likely the chat input)
+                        if (!targetInput) {{
+                            const textInputs = document.querySelectorAll('input[type="text"], textarea');
+                            if (textInputs.length > 0) {{
+                                targetInput = textInputs[textInputs.length - 1];
+                                debugInfo.push('✅ Strategy 2 success: Using last text input');
+                            }}
+                        }}
+
+                        console.log('Debug info:', debugInfo);
 
                         if (targetInput) {{
                             targetInput.value = currentSpeechText;
@@ -1924,103 +1969,65 @@ def show_patient_detail(patient_id, df):
                             // Trigger multiple events to ensure Streamlit updates
                             const inputEvent = new Event('input', {{ bubbles: true }});
                             const changeEvent = new Event('change', {{ bubbles: true }});
+                            const keyupEvent = new Event('keyup', {{ bubbles: true }});
                             targetInput.dispatchEvent(inputEvent);
                             targetInput.dispatchEvent(changeEvent);
+                            targetInput.dispatchEvent(keyupEvent);
 
-                            document.getElementById('speechStatus').innerHTML = '✅ Text filled into input box. Looking for Send button...';
+                            document.getElementById('speechStatus').innerHTML = '✅ Text inserted successfully!';
                             document.getElementById('speechStatus').style.color = '#00c851';
 
-                            // Auto-click the Send button after a short delay
-                            setTimeout(function() {{
-                                let sendClicked = false;
-
-                                // Strategy 1: Look for Send button in the same form
-                                const parentForm = targetInput.closest('form');
-                                if (parentForm) {{
-                                    const formSendButton = parentForm.querySelector('button');
-                                    if (formSendButton && formSendButton.textContent.includes('Send') && !formSendButton.disabled) {{
-                                        formSendButton.click();
-                                        sendClicked = true;
-                                    }}
-                                }}
-
-                                // Strategy 2: Look for any Send button on the page
-                                if (!sendClicked) {{
-                                    const sendButtons = document.querySelectorAll('button');
-                                    for (let button of sendButtons) {{
-                                        if (button.textContent.includes('Send') && !button.disabled) {{
-                                            button.click();
-                                            sendClicked = true;
-                                            break;
-                                        }}
-                                    }}
-                                }}
-
-                                if (sendClicked) {{
-                                    document.getElementById('speechStatus').innerHTML = '✅ Voice message sent successfully!';
-                                    // Mark this as voice input for auto-speak response
-                                    window.speechInputUsed = true;
-                                }} else {{
-                                    document.getElementById('speechStatus').innerHTML = '✅ Text filled in. Please click Send manually.';
-                                }}
-                            }}, 1500);
+                            console.log('Text inserted into input field:', targetInput);
                         }} else {{
-                            // Fallback: Show the text for manual copying with auto-copy feature
-                            const debugText = debugInfo.join('<br>');
-
-                            // Enhanced auto-copy to clipboard with fallbacks
-                            function attemptCopy() {{
-                                // Method 1: Modern clipboard API (preferred)
-                                if (navigator.clipboard && navigator.clipboard.writeText) {{
-                                    return navigator.clipboard.writeText(currentSpeechText).then(() => {{
-                                        document.getElementById('speechStatus').innerHTML = '✅ Text copied to clipboard! Paste it (Ctrl+V/Cmd+V) in the chat box above.';
-                                        document.getElementById('speechStatus').style.color = '#00c851';
-                                        return true;
-                                    }}).catch(err => {{
-                                        console.warn('Clipboard API failed:', err);
-                                        return false;
-                                    }});
-                                }}
-
-                                // Method 2: Legacy execCommand (fallback)
-                                try {{
-                                    const textArea = document.createElement('textarea');
-                                    textArea.value = currentSpeechText;
-                                    textArea.style.position = 'fixed';
-                                    textArea.style.opacity = '0';
-                                    document.body.appendChild(textArea);
-                                    textArea.select();
-                                    const success = document.execCommand('copy');
-                                    document.body.removeChild(textArea);
-
-                                    if (success) {{
-                                        document.getElementById('speechStatus').innerHTML = '✅ Text copied! Paste it (Ctrl+V/Cmd+V) in the chat box above.';
-                                        document.getElementById('speechStatus').style.color = '#00c851';
-                                        return Promise.resolve(true);
-                                    }}
-                                }} catch (err) {{
-                                    console.warn('execCommand failed:', err);
-                                }}
-
-                                // Method 3: Show manual copy instruction
-                                document.getElementById('speechStatus').innerHTML = '⚠️ Please manually copy the text below and paste it in the chat box.';
-                                document.getElementById('speechStatus').style.color = '#ff9800';
-                                return Promise.resolve(false);
-                            }}
-
-                            attemptCopy();
-
-                            document.getElementById('speechResult').innerHTML =
-                                '<strong>📋 Text copied to clipboard:</strong><br>' +
-                                '<div style="background:white; padding:10px; border-radius:4px; border:1px solid #ddd; margin-top:5px; user-select:all; cursor:text;" onclick="this.focus(); document.execCommand(\'selectAll\');">' + currentSpeechText + '</div>' +
-                                '<div style="margin-top:10px;"><small>💡 <strong>Instructions:</strong> The text has been copied to your clipboard. Now paste it (Ctrl+V/Cmd+V) in the chat input box above and click Send.</small></div>' +
-                                '<br><details style="margin-top:10px;"><summary>🔍 Debug Info</summary>' +
-                                '<div style="font-size:12px; color:#666; margin-top:5px;">' + debugText + '</div>' +
-                                '</details>';
+                            document.getElementById('speechStatus').innerHTML = '⚠️ No input field found. Text: ' + currentSpeechText;
+                            document.getElementById('speechStatus').style.color = '#ff9800';
+                            console.log('No suitable input field found. Debug info:', debugInfo);
                         }}
                     }}
                 }}
+
+                // Initialize when page loads
+                console.log('All speech functions loaded successfully');
                 </script>
+
+                <div style="margin: 10px 0; padding: 15px; background: #f0f2f6; border-radius: 8px;">
+                    <button onclick="
+                        console.log('Button clicked directly!');
+                        document.getElementById('speechStatus').innerHTML = 'Button clicked! JavaScript is working...';
+                        testFunction();
+                    " style="background: #ff4b4b; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px;">
+                        🎤 Test Click
+                    </button>
+
+                    <button id="startSpeech" onclick="
+                        console.log('Voice button clicked!');
+                        document.getElementById('speechStatus').innerHTML = 'Voice button clicked! Testing speech...';
+                        if (typeof startSpeechRecognition === 'function') {{
+                            startSpeechRecognition();
+                        }} else {{
+                            console.error('startSpeechRecognition function not found');
+                            document.getElementById('speechStatus').innerHTML = 'Error: Speech function not loaded';
+                        }}
+                    " style="background: #00c851; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px;">
+                        🎤 Start Voice Input
+                    </button>
+
+                    <button id="stopSpeech" onclick="stopSpeechRecognition()"
+                            style="background: #666; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;" disabled>
+                        ⏹️ Stop
+                    </button>
+                    <div id="speechStatus" style="margin-top: 10px; font-size: 14px; color: #666;">
+                        Click "Test Click" first to verify JavaScript works
+                    </div>
+                    <div id="speechResult" style="margin-top: 10px; padding: 10px; background: white; border-radius: 4px; min-height: 40px; border: 1px solid #ddd;">
+                        <em>Your speech will appear here...</em>
+                    </div>
+                    <button id="useSpeech" onclick="useSpeechResult()"
+                            style="background: #00c851; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-top: 10px; display: none;">
+                        ✅ Use This Text
+                    </button>
+                </div>
+
                 """
 
             components.html(html_content, height=250)
