@@ -1808,6 +1808,14 @@ def show_patient_detail(patient_id, df):
                             streamlitInputs.push(...found);
                         }}
                         console.log('Found Streamlit inputs:', streamlitInputs.length);
+                        if (streamlitInputs.length === 0) {{
+                            // Debug: show all inputs on the page
+                            const allInputs = document.querySelectorAll('input, textarea');
+                            console.log('All inputs on page:', allInputs.length);
+                            allInputs.forEach((input, i) => {{
+                                console.log(`Input ${{i}}:`, input.tagName, input.type, input.placeholder, input.dataset);
+                            }});
+                        }}
 
                         // Try first input from specific selectors
                         if (streamlitInputs.length > 0) {{
@@ -1857,7 +1865,21 @@ def show_patient_detail(patient_id, df):
                             }}
                         }}
 
-                        // Strategy 4: Last resort - any visible text input
+                        // Strategy 4: Streamlit chat message input specifically
+                        if (!targetInput) {{
+                            // Look for the Streamlit chat input which often has distinctive styling
+                            const chatWidgets = document.querySelectorAll('[data-testid="stChatInput"]');
+                            for (let widget of chatWidgets) {{
+                                const input = widget.querySelector('input') || widget.querySelector('textarea');
+                                if (input) {{
+                                    targetInput = input;
+                                    console.log('Found chat widget input');
+                                    break;
+                                }}
+                            }}
+                        }}
+
+                        // Strategy 5: Last resort - any visible text input
                         if (!targetInput) {{
                             const allInputs = document.querySelectorAll('input, textarea');
                             for (let input of allInputs) {{
