@@ -2165,13 +2165,22 @@ def show_patient_detail(patient_id, df):
 
                     <button id="startSpeech" onclick="
                         console.log('Voice button clicked!');
-                        document.getElementById('speechStatus').innerHTML = 'Voice button clicked! Testing speech...';
-                        if (typeof startSpeechRecognition === 'function') {{
-                            startSpeechRecognition();
-                        }} else {{
-                            console.error('startSpeechRecognition function not found');
-                            document.getElementById('speechStatus').innerHTML = 'Error: Speech function not loaded';
-                        }}
+                        document.getElementById('speechStatus').innerHTML = 'Checking voice functions...';
+
+                        // Wait a moment for scripts to fully load and retry
+                        setTimeout(function() {{
+                            if (typeof startSpeechRecognition === 'function') {{
+                                console.log('Speech function found, starting...');
+                                startSpeechRecognition();
+                            }} else {{
+                                console.error('Speech function still not found after delay');
+                                document.getElementById('speechStatus').innerHTML = '❌ Voice functions not loaded. Please refresh the page and try again.';
+                                document.getElementById('speechStatus').style.color = '#ff4444';
+
+                                // Log all available functions for debugging
+                                console.log('Available functions:', Object.getOwnPropertyNames(window).filter(name => typeof window[name] === 'function'));
+                            }}
+                        }}, 100);
                     " style="background: #00c851; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px;">
                         🎤 Start Voice Input
                     </button>
