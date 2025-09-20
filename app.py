@@ -1835,11 +1835,11 @@ def show_patient_detail(patient_id, df):
 
                 function useSpeechResult() {{
                     if (currentSpeechText) {{
-                        // Find the text input field and fill it
-                        const textInputs = document.querySelectorAll('input[type="text"]');
+                        // Multiple strategies to find the text input field
                         let targetInput = null;
 
-                        // Look for input that contains "Ask about this patient" in its placeholder or nearby text
+                        // Strategy 1: Look for input with "Ask about" placeholder
+                        const textInputs = document.querySelectorAll('input[type="text"]');
                         for (let input of textInputs) {{
                             if (input.placeholder && input.placeholder.includes('Ask about')) {{
                                 targetInput = input;
@@ -1847,33 +1847,85 @@ def show_patient_detail(patient_id, df):
                             }}
                         }}
 
+                        // Strategy 2: Look for the most recent text input (likely the chat input)
+                        if (!targetInput && textInputs.length > 0) {{
+                            targetInput = textInputs[textInputs.length - 1];
+                        }}
+
+                        // Strategy 3: Look for input with specific data attributes (Streamlit specific)
+                        if (!targetInput) {{
+                            const streamlitInputs = document.querySelectorAll('input[data-testid*="text"], input[aria-label*="text"]');
+                            if (streamlitInputs.length > 0) {{
+                                targetInput = streamlitInputs[streamlitInputs.length - 1];
+                            }}
+                        }}
+
+                        // Strategy 4: Look for any input in a form that contains "Send" button
+                        if (!targetInput) {{
+                            const forms = document.querySelectorAll('form');
+                            for (let form of forms) {{
+                                const sendButton = form.querySelector('button');
+                                if (sendButton && sendButton.textContent.includes('Send')) {{
+                                    const formInput = form.querySelector('input[type="text"]');
+                                    if (formInput) {{
+                                        targetInput = formInput;
+                                        break;
+                                    }}
+                                }}
+                            }}
+                        }}
+
                         if (targetInput) {{
                             targetInput.value = currentSpeechText;
                             targetInput.focus();
 
-                            // Trigger input event to update Streamlit
-                            const event = new Event('input', {{ bubbles: true }});
-                            targetInput.dispatchEvent(event);
+                            // Trigger multiple events to ensure Streamlit updates
+                            const inputEvent = new Event('input', {{ bubbles: true }});
+                            const changeEvent = new Event('change', {{ bubbles: true }});
+                            targetInput.dispatchEvent(inputEvent);
+                            targetInput.dispatchEvent(changeEvent);
 
-                            document.getElementById('speechStatus').innerHTML = '✅ Text filled into input box. Click Send to submit.';
+                            document.getElementById('speechStatus').innerHTML = '✅ Text filled into input box. Looking for Send button...';
                             document.getElementById('speechStatus').style.color = '#00c851';
 
                             // Auto-click the Send button after a short delay
                             setTimeout(function() {{
-                                const sendButtons = document.querySelectorAll('button');
-                                for (let button of sendButtons) {{
-                                    if (button.textContent.includes('Send') && !button.disabled) {{
-                                        button.click();
-                                        document.getElementById('speechStatus').innerHTML = '✅ Voice message sent successfully!';
+                                let sendClicked = false;
 
-                                        // Mark this as voice input for auto-speak response
-                                        window.speechInputUsed = true;
-                                        break;
+                                // Strategy 1: Look for Send button in the same form
+                                const parentForm = targetInput.closest('form');
+                                if (parentForm) {{
+                                    const formSendButton = parentForm.querySelector('button');
+                                    if (formSendButton && formSendButton.textContent.includes('Send') && !formSendButton.disabled) {{
+                                        formSendButton.click();
+                                        sendClicked = true;
                                     }}
                                 }}
-                            }}, 1000);
+
+                                // Strategy 2: Look for any Send button on the page
+                                if (!sendClicked) {{
+                                    const sendButtons = document.querySelectorAll('button');
+                                    for (let button of sendButtons) {{
+                                        if (button.textContent.includes('Send') && !button.disabled) {{
+                                            button.click();
+                                            sendClicked = true;
+                                            break;
+                                        }}
+                                    }}
+                                }}
+
+                                if (sendClicked) {{
+                                    document.getElementById('speechStatus').innerHTML = '✅ Voice message sent successfully!';
+                                    // Mark this as voice input for auto-speak response
+                                    window.speechInputUsed = true;
+                                }} else {{
+                                    document.getElementById('speechStatus').innerHTML = '✅ Text filled in. Please click Send manually.';
+                                }}
+                            }}, 1500);
                         }} else {{
-                            document.getElementById('speechStatus').innerHTML = '❌ Could not find input field. Please copy the text manually.';
+                            // Fallback: Show the text for manual copying
+                            document.getElementById('speechResult').innerHTML = '<strong>Please copy this text:</strong><br><textarea readonly style="width:100%; height:60px; margin-top:5px;">' + currentSpeechText + '</textarea>';
+                            document.getElementById('speechStatus').innerHTML = '❌ Auto-fill failed. Please copy the text above manually.';
                             document.getElementById('speechStatus').style.color = '#ff4444';
                         }}
                     }}
