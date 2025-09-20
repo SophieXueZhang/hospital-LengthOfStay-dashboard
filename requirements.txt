@@ -3,7 +3,4 @@ pandas
 numpy
 plotly
 openai
-SpeechRecognition
-pyttsx3
 python-dotenv
-pyaudio
