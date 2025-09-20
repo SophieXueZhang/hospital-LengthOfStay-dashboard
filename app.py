@@ -1271,6 +1271,91 @@ def show_patient_detail(patient_id, df):
         st.write(f"**Risk count:** {patient['rcount']}")
         st.write(f"**Priority level:** {'High' if patient['risk_level'] == 'High Risk' else 'Standard'}")
 
+    # Floating chat button in bottom right corner
+    st.markdown("""
+    <style>
+    .floating-chat-btn {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        background-color: white;
+        border: 2px solid #E5E7EB;
+        border-radius: 8px;
+        padding: 12px 20px;
+        color: #374151;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        z-index: 1000;
+        transition: all 0.2s ease;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    .floating-chat-btn:hover {
+        border-color: #D1D5DB;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        transform: translateY(-1px);
+    }
+    .chat-modal {
+        position: fixed;
+        bottom: 100px;
+        right: 30px;
+        width: 350px;
+        height: 400px;
+        background-color: white;
+        border-radius: 15px;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+        z-index: 1001;
+        display: none;
+        flex-direction: column;
+    }
+    .chat-modal.show {
+        display: flex;
+    }
+    .chat-header {
+        background-color: #4CAF50;
+        color: white;
+        padding: 15px;
+        border-radius: 15px 15px 0 0;
+        font-weight: bold;
+    }
+    .chat-body {
+        flex: 1;
+        padding: 15px;
+        overflow-y: auto;
+    }
+    .chat-input {
+        padding: 15px;
+        border-top: 1px solid #eee;
+        border-radius: 0 0 15px 15px;
+    }
+    </style>
+
+    <div class="floating-chat-btn" onclick="toggleChat()">Chat</div>
+
+    <div id="chatModal" class="chat-modal">
+        <div class="chat-header">
+            AI Medical Assistant
+            <button style="float: right; background: none; border: none; color: white; font-size: 18px; cursor: pointer;" onclick="toggleChat()">×</button>
+        </div>
+        <div class="chat-body">
+            <div style="background-color: #f1f1f1; padding: 10px; border-radius: 10px; margin-bottom: 10px;">
+                Hello! I'm here to help with {patient['full_name']}'s case. What would you like to know?
+            </div>
+        </div>
+        <div class="chat-input">
+            <input type="text" placeholder="Ask about this patient..." style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 20px;">
+        </div>
+    </div>
+
+    <script>
+    function toggleChat() {
+        var modal = document.getElementById('chatModal');
+        modal.classList.toggle('show');
+    }
+    </script>
+    """, unsafe_allow_html=True)
+
 def main():
     # Initialize session state
     if "current_page" not in st.session_state:
@@ -1296,7 +1381,26 @@ def main():
     
     # Sidebar filters (moved to sidebar with chat)
     with st.sidebar:
-        
+        # OpenAI API Key input
+        st.markdown("### ⚙️ Settings")
+        api_key_input = st.text_input(
+            "OpenAI API Key",
+            type="password",
+            placeholder="sk-...",
+            help="Enter your OpenAI API key to enable AI chat features",
+            key="dashboard_api_key"
+        )
+
+        if api_key_input:
+            st.session_state.openai_api_key = api_key_input
+            st.success("✅ API key configured")
+        elif not api_key_input and 'openai_api_key' not in st.session_state:
+            st.info("💡 Enter API key to enable AI features")
+
+        st.markdown("---")
+
+        st.markdown("### 🔍 Filters")
+
         # Date range filter
         date_range = st.date_input(
             "Date Range",
