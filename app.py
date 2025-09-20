@@ -1791,9 +1791,34 @@ def show_patient_detail(patient_id, df):
                         let targetInput = null;
                         let submitButton = null;
 
-                        // Strategy 1: Find Streamlit text_input by data attributes
-                        const streamlitInputs = document.querySelectorAll('input[data-testid*="text"], input[aria-label*="chat"], input[placeholder*="Ask"], textarea[data-testid*="text"]');
+                        // Strategy 1: Enhanced Streamlit chat input detection
+                        const chatSelectors = [
+                            'input[data-testid="stChatInput"] input',
+                            'input[data-testid="stTextInput"] input',
+                            'div[data-testid="stChatInput"] input',
+                            'div[data-testid="stTextInput"] input',
+                            'input[placeholder*="Ask"]',
+                            'input[placeholder*="chat" i]',
+                            'textarea[placeholder*="message" i]'
+                        ];
+
+                        let streamlitInputs = [];
+                        for (let selector of chatSelectors) {{
+                            const found = document.querySelectorAll(selector);
+                            streamlitInputs.push(...found);
+                        }}
                         console.log('Found Streamlit inputs:', streamlitInputs.length);
+
+                        // Try first input from specific selectors
+                        if (streamlitInputs.length > 0) {{
+                            for (let input of streamlitInputs) {{
+                                const rect = input.getBoundingClientRect();
+                                if (rect.width > 50 && rect.height > 10 && !input.disabled && !input.readOnly) {{
+                                    targetInput = input;
+                                    break;
+                                }}
+                            }}
+                        }}
 
                         // Strategy 2: Find by nearby form submit buttons
                         const submitButtons = document.querySelectorAll('button[kind="primary"], button[type="submit"], button:contains("Send")');
