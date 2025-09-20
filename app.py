@@ -1273,90 +1273,135 @@ def show_patient_detail(patient_id, df):
         st.write(f"**Risk count:** {patient['rcount']}")
         st.write(f"**Priority level:** {'High' if patient['risk_level'] == 'High Risk' else 'Standard'}")
 
-    # Floating chat button in bottom right corner
+    # Simple chat toggle using Streamlit
+    chat_state_key = f"show_chat_{patient_id}"
+    if chat_state_key not in st.session_state:
+        st.session_state[chat_state_key] = False
+
+    # Floating chat button in bottom right
     st.markdown("""
     <style>
-    .floating-chat-btn {
+    .chat-float-container {
         position: fixed;
         bottom: 30px;
         right: 30px;
+        z-index: 1000;
+    }
+    .stButton > button {
         background-color: #374151;
+        color: white;
         border: none;
         border-radius: 8px;
         padding: 12px 20px;
-        color: white;
-        font-size: 14px;
         font-weight: 500;
-        cursor: pointer;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        z-index: 1000;
         transition: all 0.2s ease;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
-    .floating-chat-btn:hover {
+    .stButton > button:hover {
         background-color: #4B5563;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         transform: translateY(-1px);
     }
-    .chat-modal {
-        position: fixed;
-        bottom: 100px;
-        right: 30px;
-        width: 350px;
-        height: 400px;
-        background-color: white;
-        border-radius: 15px;
-        box-shadow: 0 8px 25px rgba(0,0,0,0.2);
-        z-index: 1001;
-        display: none;
-        flex-direction: column;
-    }
-    .chat-modal.show {
-        display: flex;
-    }
-    .chat-header {
-        background-color: #4CAF50;
-        color: white;
-        padding: 15px;
-        border-radius: 15px 15px 0 0;
-        font-weight: bold;
-    }
-    .chat-body {
-        flex: 1;
-        padding: 15px;
-        overflow-y: auto;
-    }
-    .chat-input {
-        padding: 15px;
-        border-top: 1px solid #eee;
-        border-radius: 0 0 15px 15px;
-    }
     </style>
-
-    <div class="floating-chat-btn" onclick="toggleChat()">Let's Chat</div>
-
-    <div id="chatModal" class="chat-modal">
-        <div class="chat-header">
-            AI Medical Assistant
-            <button style="float: right; background: none; border: none; color: white; font-size: 18px; cursor: pointer;" onclick="toggleChat()">×</button>
-        </div>
-        <div class="chat-body">
-            <div style="background-color: #f1f1f1; padding: 10px; border-radius: 10px; margin-bottom: 10px;">
-                Hello! I'm here to help with {patient['full_name']}'s case. What would you like to know?
-            </div>
-        </div>
-        <div class="chat-input">
-            <input type="text" placeholder="Ask about this patient..." style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 20px;">
-        </div>
-    </div>
-
-    <script>
-    function toggleChat() {
-        var modal = document.getElementById('chatModal');
-        modal.classList.toggle('show');
-    }
-    </script>
     """, unsafe_allow_html=True)
+
+    # Create a container for the floating button
+    with st.container():
+        col1, col2, col3 = st.columns([8, 1, 1])
+        with col3:
+            if st.button("💬 Chat", key=f"chat_toggle_{patient_id}", help="Open AI Assistant"):
+                st.session_state[chat_state_key] = not st.session_state[chat_state_key]
+
+    # Show chat interface if toggled
+    if st.session_state[chat_state_key]:
+        st.markdown("---")
+        st.markdown(f"### 🤖 AI Medical Assistant")
+        st.markdown(f"**Patient:** {patient['full_name']}")
+
+        # Initialize chat history
+        chat_key = f"simple_chat_{patient_id}"
+        if chat_key not in st.session_state:
+            pronoun = 'his' if patient['gender'] == 'M' else 'her'
+            st.session_state[chat_key] = [
+                {"role": "assistant", "content": f"I've reviewed {patient['full_name']}'s medical records and am ready to discuss {pronoun} case. How may I assist you with the clinical assessment or treatment planning?"}
+            ]
+
+        # Display chat history
+        for message in st.session_state[chat_key]:
+            if message["role"] == "user":
+                st.markdown(f"**🗣️ You:** {message['content']}")
+            else:
+                st.markdown(f"**🤖 AI:** {message['content']}")
+
+        # Chat input
+        with st.form(key=f"simple_chat_form_{patient_id}", clear_on_submit=True):
+            user_input = st.text_input("Ask about this patient...", key=f"simple_chat_input_{patient_id}")
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                submitted = st.form_submit_button("Send", use_container_width=True, type="primary")
+            with col2:
+                if st.form_submit_button("🔊 Voice", use_container_width=True):
+                    st.info("Voice input coming soon!")
+
+        if submitted and user_input:
+            # Add user message
+            st.session_state[chat_key].append({"role": "user", "content": user_input})
+
+            # Generate AI response using OpenAI
+            try:
+                if 'openai_api_key' in st.session_state and st.session_state.openai_api_key:
+                    from openai import OpenAI
+                    client = OpenAI(api_key=st.session_state.openai_api_key)
+
+                    # Create patient context
+                    patient_context = f"""
+                    Patient Information:
+                    - Name: {patient['full_name']}
+                    - Gender: {'Male' if patient['gender'] == 'M' else 'Female'}
+                    - Age Group: {patient.get('age_group', 'Unknown')}
+                    - Admission Reason: {patient.get('admission_reason', 'Not specified')}
+                    - Length of Stay: {patient['lengthofstay']} days
+                    - Admission Date: {patient['vdate']}
+                    - Discharge Date: {patient['discharged']}
+                    - Facility: {patient['facid']}
+                    - Risk Level: {patient.get('risk_level', 'Standard')}
+
+                    Lab Values:
+                    - Glucose: {patient.get('glucose', 'N/A')}
+                    - Creatinine: {patient.get('creatinine', 'N/A')}
+                    - Hematocrit: {patient.get('hematocrit', 'N/A')}
+                    - BMI: {patient.get('bmi', 'N/A')}
+
+                    Medical Conditions:
+                    - Asthma: {'Yes' if patient.get('asthma', 0) == 1 else 'No'}
+                    - Pneumonia: {'Yes' if patient.get('pneum', 0) == 1 else 'No'}
+                    - Diabetes: {'Yes' if patient.get('dialysisrenalendstage', 0) == 1 else 'No'}
+                    - Depression: {'Yes' if patient.get('depress', 0) == 1 else 'No'}
+                    """
+
+                    response = client.chat.completions.create(
+                        model="gpt-3.5-turbo",
+                        messages=[
+                            {"role": "system", "content": "You are a senior medical specialist with 20+ years of clinical experience in internal medicine, emergency care, and hospital management. You have expertise in interpreting lab values, assessing patient risk factors, and providing evidence-based medical recommendations. Respond as an experienced clinician would - provide direct, professional medical analysis without introducing yourself. Be clear, actionable, and use appropriate medical terminology while explaining complex concepts when needed. Always use correct pronouns based on patient gender."},
+                            {"role": "user", "content": f"Patient context:\n{patient_context}\n\nUser question: {user_input}"}
+                        ],
+                        max_tokens=200,
+                        temperature=0.7
+                    )
+
+                    ai_response = response.choices[0].message.content.strip()
+                else:
+                    ai_response = "Please enter your OpenAI API key in the dashboard sidebar to enable AI responses. I can provide basic patient information in the meantime."
+
+            except Exception as e:
+                ai_response = f"I'm having trouble connecting to the AI service. Error: {str(e)}. Please check your API key or try again later."
+            st.session_state[chat_key].append({"role": "assistant", "content": ai_response})
+            st.rerun()
+
+        # Close chat button
+        if st.button("❌ Close Chat", key=f"close_chat_{patient_id}"):
+            st.session_state[chat_state_key] = False
+            st.rerun()
 
 def main():
     # Initialize session state
