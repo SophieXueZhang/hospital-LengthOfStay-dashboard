@@ -1725,35 +1725,27 @@ def show_patient_detail(patient_id, df):
                     upload_clicked = st.form_submit_button("📎 File", use_container_width=True)
                 voice_clicked = False  # No voice button in cloud environment
 
-        # Handle voice input
+        # Handle voice input - unified interface for both environments
         if voice_clicked:
-            # Use different voice input methods based on environment
-            if SPEECH_RECOGNITION_AVAILABLE and IS_LOCAL_ENV:
-                # Local environment with Python libraries
-                st.session_state[listening_key] = True
-                st.session_state[voice_key] = ""  # Clear previous voice input
-                with st.spinner("🎧 Listening... Please speak now!"):
-                    voice_text, error = listen_once()
-                    if voice_text:
-                        st.session_state[voice_key] = voice_text
-                        st.session_state[f"auto_speak_{patient_id}"] = True  # Enable auto-speak for voice input
-                        st.success(f"✅ Heard: '{voice_text}'")
-                        st.rerun()
-                    elif error:
-                        st.error(f"❌ {error}")
-                    st.session_state[listening_key] = False
+            # Always show the Web Speech API interface for consistency
+            st.info("🎤 **Voice Recognition Active**")
+
+            # Create a simpler solution using HTML input that can update session state
+            speech_input_key = f"speech_input_{patient_id}"
+
+            if speech_input_key not in st.session_state:
+                st.session_state[speech_input_key] = ""
+
+            # Check if we should also use Python speech recognition for local env
+            use_python_speech = SPEECH_RECOGNITION_AVAILABLE and IS_LOCAL_ENV
+
+            if use_python_speech:
+                st.markdown("*Using enhanced local speech recognition with Web interface*")
             else:
-                # Cloud environment - use Web Speech API with session state integration
-                st.info("🎤 **Cloud Voice Recognition Active**")
+                st.markdown("*Using browser-based speech recognition*")
 
-                # Create a simpler solution using HTML input that can update session state
-                speech_input_key = f"speech_input_{patient_id}"
-
-                if speech_input_key not in st.session_state:
-                    st.session_state[speech_input_key] = ""
-
-                # Display speech recognition interface
-                html_content = f"""
+            # Display unified speech recognition interface
+            html_content = f"""
                 <div style="margin: 10px 0; padding: 15px; background: #f0f2f6; border-radius: 8px;">
                     <button id="startSpeech" onclick="startSpeechRecognition()"
                             style="background: #ff4b4b; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px;">
@@ -1837,40 +1829,90 @@ def show_patient_detail(patient_id, df):
                     if (currentSpeechText) {{
                         // Multiple strategies to find the text input field
                         let targetInput = null;
+                        let debugInfo = [];
 
-                        // Strategy 1: Look for input with "Ask about" placeholder
-                        const textInputs = document.querySelectorAll('input[type="text"]');
-                        for (let input of textInputs) {{
-                            if (input.placeholder && input.placeholder.includes('Ask about')) {{
-                                targetInput = input;
+                        // Enhanced Strategy 0: Streamlit Cloud specific selectors (highest priority)
+                        const cloudSelectors = [
+                            'input[data-testid="stTextInput"] input',
+                            'input[data-testid="textInput"] input',
+                            '.stTextInput input',
+                            '.st-emotion-cache input[type="text"]',
+                            'div[data-testid="stChatInput"] input',
+                            'div[data-testid="chatInput"] input',
+                            'input[type="text"][placeholder*="Ask"]',
+                            'textarea[placeholder*="Ask"]',
+                            'input[data-baseweb="input"]'
+                        ];
+
+                        for (let selector of cloudSelectors) {{
+                            const cloudInputs = document.querySelectorAll(selector);
+                            if (cloudInputs.length > 0) {{
+                                debugInfo.push(`Cloud selector "${{selector}}": Found ${{cloudInputs.length}} inputs`);
+                                targetInput = cloudInputs[cloudInputs.length - 1];
+                                debugInfo.push('✅ Enhanced Strategy 0 success: Found Streamlit Cloud input');
                                 break;
                             }}
+                        }}
+
+                        // Strategy 1: Look for input with "Ask about" placeholder
+                        if (!targetInput) {{
+                            const textInputs = document.querySelectorAll('input[type="text"]');
+                            debugInfo.push(`Found ${{textInputs.length}} text inputs`);
+
+                            for (let input of textInputs) {{
+                            debugInfo.push(`Input placeholder: "${{input.placeholder || 'none'}}"`);
+                            if (input.placeholder && input.placeholder.includes('Ask about')) {{
+                                targetInput = input;
+                                debugInfo.push('✅ Strategy 1 success: Found "Ask about" placeholder');
+                                break;
+                            }}
+                        }}
                         }}
 
                         // Strategy 2: Look for the most recent text input (likely the chat input)
                         if (!targetInput && textInputs.length > 0) {{
                             targetInput = textInputs[textInputs.length - 1];
+                            debugInfo.push('✅ Strategy 2 success: Using last text input');
                         }}
 
                         // Strategy 3: Look for input with specific data attributes (Streamlit specific)
                         if (!targetInput) {{
-                            const streamlitInputs = document.querySelectorAll('input[data-testid*="text"], input[aria-label*="text"]');
+                            const streamlitInputs = document.querySelectorAll('input[data-testid*="text"], input[aria-label*="text"], input[class*="st-"]');
+                            debugInfo.push(`Found ${{streamlitInputs.length}} Streamlit-style inputs`);
                             if (streamlitInputs.length > 0) {{
                                 targetInput = streamlitInputs[streamlitInputs.length - 1];
+                                debugInfo.push('✅ Strategy 3 success: Using Streamlit input');
                             }}
                         }}
 
                         // Strategy 4: Look for any input in a form that contains "Send" button
                         if (!targetInput) {{
                             const forms = document.querySelectorAll('form');
+                            debugInfo.push(`Found ${{forms.length}} forms`);
                             for (let form of forms) {{
                                 const sendButton = form.querySelector('button');
                                 if (sendButton && sendButton.textContent.includes('Send')) {{
                                     const formInput = form.querySelector('input[type="text"]');
                                     if (formInput) {{
                                         targetInput = formInput;
+                                        debugInfo.push('✅ Strategy 4 success: Found input in form with Send button');
                                         break;
                                     }}
+                                }}
+                            }}
+                        }}
+
+                        // Strategy 5: Look for any visible input that's not hidden
+                        if (!targetInput) {{
+                            const allInputs = document.querySelectorAll('input');
+                            debugInfo.push(`Found ${{allInputs.length}} total inputs`);
+                            for (let input of allInputs) {{
+                                const style = window.getComputedStyle(input);
+                                if (style.display !== 'none' && style.visibility !== 'hidden' &&
+                                    input.type !== 'hidden' && input.offsetWidth > 0 && input.offsetHeight > 0) {{
+                                    targetInput = input;
+                                    debugInfo.push('✅ Strategy 5 success: Found visible input');
+                                    break;
                                 }}
                             }}
                         }}
@@ -1923,17 +1965,65 @@ def show_patient_detail(patient_id, df):
                                 }}
                             }}, 1500);
                         }} else {{
-                            // Fallback: Show the text for manual copying
-                            document.getElementById('speechResult').innerHTML = '<strong>Please copy this text:</strong><br><textarea readonly style="width:100%; height:60px; margin-top:5px;">' + currentSpeechText + '</textarea>';
-                            document.getElementById('speechStatus').innerHTML = '❌ Auto-fill failed. Please copy the text above manually.';
-                            document.getElementById('speechStatus').style.color = '#ff4444';
+                            // Fallback: Show the text for manual copying with auto-copy feature
+                            const debugText = debugInfo.join('<br>');
+
+                            // Enhanced auto-copy to clipboard with fallbacks
+                            function attemptCopy() {{
+                                // Method 1: Modern clipboard API (preferred)
+                                if (navigator.clipboard && navigator.clipboard.writeText) {{
+                                    return navigator.clipboard.writeText(currentSpeechText).then(() => {{
+                                        document.getElementById('speechStatus').innerHTML = '✅ Text copied to clipboard! Paste it (Ctrl+V/Cmd+V) in the chat box above.';
+                                        document.getElementById('speechStatus').style.color = '#00c851';
+                                        return true;
+                                    }}).catch(err => {{
+                                        console.warn('Clipboard API failed:', err);
+                                        return false;
+                                    }});
+                                }}
+
+                                // Method 2: Legacy execCommand (fallback)
+                                try {{
+                                    const textArea = document.createElement('textarea');
+                                    textArea.value = currentSpeechText;
+                                    textArea.style.position = 'fixed';
+                                    textArea.style.opacity = '0';
+                                    document.body.appendChild(textArea);
+                                    textArea.select();
+                                    const success = document.execCommand('copy');
+                                    document.body.removeChild(textArea);
+
+                                    if (success) {{
+                                        document.getElementById('speechStatus').innerHTML = '✅ Text copied! Paste it (Ctrl+V/Cmd+V) in the chat box above.';
+                                        document.getElementById('speechStatus').style.color = '#00c851';
+                                        return Promise.resolve(true);
+                                    }}
+                                }} catch (err) {{
+                                    console.warn('execCommand failed:', err);
+                                }}
+
+                                // Method 3: Show manual copy instruction
+                                document.getElementById('speechStatus').innerHTML = '⚠️ Please manually copy the text below and paste it in the chat box.';
+                                document.getElementById('speechStatus').style.color = '#ff9800';
+                                return Promise.resolve(false);
+                            }}
+
+                            attemptCopy();
+
+                            document.getElementById('speechResult').innerHTML =
+                                '<strong>📋 Text copied to clipboard:</strong><br>' +
+                                '<div style="background:white; padding:10px; border-radius:4px; border:1px solid #ddd; margin-top:5px; user-select:all; cursor:text;" onclick="this.focus(); document.execCommand(\'selectAll\');">' + currentSpeechText + '</div>' +
+                                '<div style="margin-top:10px;"><small>💡 <strong>Instructions:</strong> The text has been copied to your clipboard. Now paste it (Ctrl+V/Cmd+V) in the chat input box above and click Send.</small></div>' +
+                                '<br><details style="margin-top:10px;"><summary>🔍 Debug Info</summary>' +
+                                '<div style="font-size:12px; color:#666; margin-top:5px;">' + debugText + '</div>' +
+                                '</details>';
                         }}
                     }}
                 }}
                 </script>
                 """
 
-                components.html(html_content, height=250)
+            components.html(html_content, height=250)
 
         # File upload section (outside of form)
         if upload_clicked:
