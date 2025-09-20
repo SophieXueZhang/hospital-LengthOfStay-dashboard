@@ -1743,19 +1743,145 @@ def show_patient_detail(patient_id, df):
                         st.error(f"❌ {error}")
                     st.session_state[listening_key] = False
             else:
-                # Cloud environment - use Web Speech API
+                # Cloud environment - use Web Speech API with session state integration
                 st.info("🎤 **Cloud Voice Recognition Active**")
-                st.markdown("**Instructions:** Click 'Start Recording' below, speak clearly, then click 'Stop Recording' or wait for auto-stop.")
 
-                # Create unique ID for this voice session
-                voice_session_id = f"voice_{patient_id}_{int(time.time())}"
+                # Create a simpler solution using HTML input that can update session state
+                speech_input_key = f"speech_input_{patient_id}"
 
-                # Display Web Speech API interface
-                html_content = create_web_speech_html(voice_session_id)
-                components.html(html_content, height=200)
+                if speech_input_key not in st.session_state:
+                    st.session_state[speech_input_key] = ""
 
-                # Instructions for manual input fallback
-                st.markdown("**Alternative:** If voice recognition doesn't work, you can type your question in the text box above.")
+                # Display speech recognition interface
+                html_content = f"""
+                <div style="margin: 10px 0; padding: 15px; background: #f0f2f6; border-radius: 8px;">
+                    <button id="startSpeech" onclick="startSpeechRecognition()"
+                            style="background: #ff4b4b; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px;">
+                        🎤 Start Voice Input
+                    </button>
+                    <button id="stopSpeech" onclick="stopSpeechRecognition()"
+                            style="background: #666; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;" disabled>
+                        ⏹️ Stop
+                    </button>
+                    <div id="speechStatus" style="margin-top: 10px; font-size: 14px; color: #666;">
+                        Click "Start Voice Input" to begin
+                    </div>
+                    <div id="speechResult" style="margin-top: 10px; padding: 10px; background: white; border-radius: 4px; min-height: 40px; border: 1px solid #ddd;">
+                        <em>Your speech will appear here...</em>
+                    </div>
+                    <button id="useSpeech" onclick="useSpeechResult()"
+                            style="background: #00c851; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-top: 10px; display: none;">
+                        ✅ Use This Text
+                    </button>
+                </div>
+
+                <script>
+                let recognition = null;
+                let currentSpeechText = '';
+
+                function startSpeechRecognition() {{
+                    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {{
+                        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                        recognition = new SpeechRecognition();
+
+                        recognition.continuous = false;
+                        recognition.interimResults = false;
+                        recognition.lang = 'en-US';
+
+                        recognition.onstart = function() {{
+                            document.getElementById('startSpeech').disabled = true;
+                            document.getElementById('stopSpeech').disabled = false;
+                            document.getElementById('speechStatus').innerHTML = '🎧 Listening... Please speak now!';
+                            document.getElementById('speechStatus').style.color = '#ff4b4b';
+                            document.getElementById('speechResult').innerHTML = '<em>Listening...</em>';
+                        }};
+
+                        recognition.onresult = function(event) {{
+                            const text = event.results[0][0].transcript;
+                            currentSpeechText = text;
+                            document.getElementById('speechResult').innerHTML = '<strong>Recognized:</strong> ' + text;
+                            document.getElementById('speechStatus').innerHTML = '✅ Speech recognition completed!';
+                            document.getElementById('speechStatus').style.color = '#00c851';
+                            document.getElementById('useSpeech').style.display = 'inline-block';
+                        }};
+
+                        recognition.onerror = function(event) {{
+                            document.getElementById('speechStatus').innerHTML = '❌ Error: ' + event.error;
+                            document.getElementById('speechStatus').style.color = '#ff4444';
+                            resetSpeechButtons();
+                        }};
+
+                        recognition.onend = function() {{
+                            resetSpeechButtons();
+                        }};
+
+                        recognition.start();
+                    }} else {{
+                        document.getElementById('speechStatus').innerHTML = '❌ Speech recognition not supported in this browser';
+                        document.getElementById('speechStatus').style.color = '#ff4444';
+                    }}
+                }}
+
+                function stopSpeechRecognition() {{
+                    if (recognition) {{
+                        recognition.stop();
+                    }}
+                }}
+
+                function resetSpeechButtons() {{
+                    document.getElementById('startSpeech').disabled = false;
+                    document.getElementById('stopSpeech').disabled = true;
+                }}
+
+                function useSpeechResult() {{
+                    if (currentSpeechText) {{
+                        // Find the text input field and fill it
+                        const textInputs = document.querySelectorAll('input[type="text"]');
+                        let targetInput = null;
+
+                        // Look for input that contains "Ask about this patient" in its placeholder or nearby text
+                        for (let input of textInputs) {{
+                            if (input.placeholder && input.placeholder.includes('Ask about')) {{
+                                targetInput = input;
+                                break;
+                            }}
+                        }}
+
+                        if (targetInput) {{
+                            targetInput.value = currentSpeechText;
+                            targetInput.focus();
+
+                            // Trigger input event to update Streamlit
+                            const event = new Event('input', {{ bubbles: true }});
+                            targetInput.dispatchEvent(event);
+
+                            document.getElementById('speechStatus').innerHTML = '✅ Text filled into input box. Click Send to submit.';
+                            document.getElementById('speechStatus').style.color = '#00c851';
+
+                            // Auto-click the Send button after a short delay
+                            setTimeout(function() {{
+                                const sendButtons = document.querySelectorAll('button');
+                                for (let button of sendButtons) {{
+                                    if (button.textContent.includes('Send') && !button.disabled) {{
+                                        button.click();
+                                        document.getElementById('speechStatus').innerHTML = '✅ Voice message sent successfully!';
+
+                                        // Mark this as voice input for auto-speak response
+                                        window.speechInputUsed = true;
+                                        break;
+                                    }}
+                                }}
+                            }}, 1000);
+                        }} else {{
+                            document.getElementById('speechStatus').innerHTML = '❌ Could not find input field. Please copy the text manually.';
+                            document.getElementById('speechStatus').style.color = '#ff4444';
+                        }}
+                    }}
+                }}
+                </script>
+                """
+
+                components.html(html_content, height=250)
 
         # File upload section (outside of form)
         if upload_clicked:
@@ -1894,6 +2020,11 @@ def show_patient_detail(patient_id, df):
         if submitted and user_input:
             # Add user message
             st.session_state[chat_key].append({"role": "user", "content": user_input})
+
+            # Check if this came from voice input via JavaScript
+            voice_from_web = "speechInputUsed" in user_input or len(user_input) > 10  # Simple heuristic
+            if voice_from_web or st.session_state.get(f"auto_speak_{patient_id}", False):
+                st.session_state[f"auto_speak_{patient_id}"] = True
 
             # Generate AI response using OpenAI
             try:
