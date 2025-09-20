@@ -18,10 +18,21 @@ import os
 from dotenv import load_dotenv
 import openai
 import asyncio
-import speech_recognition as sr
-import pyttsx3
 import threading
 import time
+
+# Import speech libraries with fallback for deployment environments
+try:
+    import speech_recognition as sr
+    SPEECH_RECOGNITION_AVAILABLE = True
+except ImportError:
+    SPEECH_RECOGNITION_AVAILABLE = False
+
+try:
+    import pyttsx3
+    TTS_AVAILABLE = True
+except ImportError:
+    TTS_AVAILABLE = False
 import json
 
 # Import RAG system
@@ -668,22 +679,35 @@ Guidelines:
 # Voice functionality
 def init_speech_components():
     """Initialize speech recognition and text-to-speech components"""
-    recognizer = sr.Recognizer()
+    if not SPEECH_RECOGNITION_AVAILABLE:
+        return None, None
 
     try:
-        # Try to initialize TTS engine
-        tts_engine = pyttsx3.init()
-        # Configure TTS settings
-        tts_engine.setProperty('rate', 150)  # Speed of speech
-        tts_engine.setProperty('volume', 0.8)  # Volume level
-        return recognizer, tts_engine
-    except Exception as e:
-        st.warning(f"Text-to-speech not available: {e}")
-        return recognizer, None
+        recognizer = sr.Recognizer()
+    except Exception:
+        return None, None
+
+    tts_engine = None
+    if TTS_AVAILABLE:
+        try:
+            # Try to initialize TTS engine
+            tts_engine = pyttsx3.init()
+            # Configure TTS settings
+            tts_engine.setProperty('rate', 150)  # Speed of speech
+            tts_engine.setProperty('volume', 0.8)  # Volume level
+        except Exception:
+            tts_engine = None
+
+    return recognizer, tts_engine
 
 def listen_once():
     """Listen for voice input and return transcribed text"""
+    if not SPEECH_RECOGNITION_AVAILABLE:
+        return None, "Speech recognition not available in this environment"
+
     recognizer, _ = init_speech_components()
+    if recognizer is None:
+        return None, "Could not initialize speech recognition"
 
     try:
         with sr.Microphone() as source:
@@ -708,21 +732,27 @@ def listen_once():
 
 def speak_text(text):
     """Convert text to speech"""
+    if not TTS_AVAILABLE:
+        return False
+
     try:
         _, tts_engine = init_speech_components()
 
         if tts_engine is None:
-            # Fallback to macOS system 'say' command
+            # Fallback to macOS system 'say' command (only works locally)
             try:
-                def _speak_system():
-                    import subprocess
-                    subprocess.run(['say', text], check=True, capture_output=True)
+                import subprocess
+                import platform
+                if platform.system() == "Darwin":  # macOS
+                    def _speak_system():
+                        subprocess.run(['say', text], check=True, capture_output=True)
 
-                speech_thread = threading.Thread(target=_speak_system, daemon=True)
-                speech_thread.start()
-                return True
-            except Exception as sys_e:
-                st.warning(f"System TTS also failed: {sys_e}")
+                    speech_thread = threading.Thread(target=_speak_system, daemon=True)
+                    speech_thread.start()
+                    return True
+                else:
+                    return False
+            except Exception:
                 return False
 
         # Run TTS in a separate thread to prevent blocking
@@ -733,19 +763,8 @@ def speak_text(text):
         speech_thread = threading.Thread(target=_speak, daemon=True)
         speech_thread.start()
         return True
-    except Exception as e:
-        # Try system say command as fallback
-        try:
-            def _speak_system():
-                import subprocess
-                subprocess.run(['say', text], check=True, capture_output=True)
-
-            speech_thread = threading.Thread(target=_speak_system, daemon=True)
-            speech_thread.start()
-            return True
-        except Exception as sys_e:
-            st.error(f"All TTS options failed. pyttsx3: {e}, system: {sys_e}")
-            return False
+    except Exception:
+        return False
 
 def show_patient_detail(patient_id, df):
     """Show detailed patient information with sidebar showing patient history"""
@@ -1544,13 +1563,22 @@ def show_patient_detail(patient_id, df):
             user_input = st.text_input("Ask about this patient...",
                                        value=st.session_state[voice_key],
                                        key=f"simple_chat_input_{patient_id}")
-            col1, col2, col3 = st.columns([2, 1, 1])
-            with col1:
-                submitted = st.form_submit_button("Send", use_container_width=True, type="primary")
-            with col2:
-                voice_clicked = st.form_submit_button("🎤 Voice", use_container_width=True)
-            with col3:
-                upload_clicked = st.form_submit_button("📎 File", use_container_width=True)
+            # Adjust columns based on voice availability
+            if SPEECH_RECOGNITION_AVAILABLE:
+                col1, col2, col3 = st.columns([2, 1, 1])
+                with col1:
+                    submitted = st.form_submit_button("Send", use_container_width=True, type="primary")
+                with col2:
+                    voice_clicked = st.form_submit_button("🎤 Voice", use_container_width=True)
+                with col3:
+                    upload_clicked = st.form_submit_button("📎 File", use_container_width=True)
+            else:
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    submitted = st.form_submit_button("Send", use_container_width=True, type="primary")
+                with col2:
+                    upload_clicked = st.form_submit_button("📎 File", use_container_width=True)
+                voice_clicked = False  # No voice button in cloud environment
 
         # Handle voice input
         if voice_clicked:
