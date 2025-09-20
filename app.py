@@ -45,8 +45,8 @@ IS_LOCAL_ENV = (
     "streamlit" in str(sys.argv) and "run" in str(sys.argv)
 )
 
-# Show voice button in local environment even if libraries are missing
-SHOW_VOICE_FEATURES = SPEECH_RECOGNITION_AVAILABLE or IS_LOCAL_ENV
+# Enable voice features for all environments (using Web Speech API for cloud)
+SHOW_VOICE_FEATURES = True
 import json
 
 # Import RAG system
@@ -779,6 +779,137 @@ def speak_text(text):
         return True
     except Exception:
         return False
+
+# Web Speech API functions for cloud deployment
+def create_web_speech_html(unique_id):
+    """Create HTML component for Web Speech API"""
+    html_code = f"""
+    <div id="voice-container-{unique_id}" style="margin: 10px 0;">
+        <button id="startRecording-{unique_id}"
+                style="background: #ff4b4b; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 10px;">
+            🎤 Start Recording
+        </button>
+        <button id="stopRecording-{unique_id}"
+                style="background: #gray; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 10px;"
+                disabled>
+            ⏹️ Stop Recording
+        </button>
+        <span id="status-{unique_id}" style="font-size: 14px; color: #666;">Ready to record</span>
+        <div id="result-{unique_id}" style="margin-top: 10px; padding: 10px; background: #f0f2f6; border-radius: 4px; display: none;">
+            <strong>Recognized Text:</strong> <span id="transcription-{unique_id}"></span>
+        </div>
+    </div>
+
+    <script>
+    (function() {{
+        const startBtn = document.getElementById('startRecording-{unique_id}');
+        const stopBtn = document.getElementById('stopRecording-{unique_id}');
+        const status = document.getElementById('status-{unique_id}');
+        const result = document.getElementById('result-{unique_id}');
+        const transcription = document.getElementById('transcription-{unique_id}');
+
+        let recognition = null;
+
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {{
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.lang = 'en-US';
+
+            recognition.onstart = function() {{
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                status.textContent = '🎧 Listening... Please speak now!';
+                status.style.color = '#ff4b4b';
+            }};
+
+            recognition.onresult = function(event) {{
+                const text = event.results[0][0].transcript;
+                transcription.textContent = text;
+                result.style.display = 'block';
+                status.textContent = '✅ Speech recognized! Transcript shown below.';
+                status.style.color = '#00c851';
+
+                // Send result back to Streamlit
+                window.parent.postMessage({{
+                    type: 'speechResult',
+                    text: text,
+                    uniqueId: '{unique_id}'
+                }}, '*');
+            }};
+
+            recognition.onerror = function(event) {{
+                status.textContent = '❌ Error: ' + event.error;
+                status.style.color = '#ff4444';
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+            }};
+
+            recognition.onend = function() {{
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                if (status.textContent.includes('Listening')) {{
+                    status.textContent = 'Ready to record';
+                    status.style.color = '#666';
+                }}
+            }};
+        }} else {{
+            status.textContent = '❌ Speech recognition not supported in this browser';
+            status.style.color = '#ff4444';
+            startBtn.disabled = true;
+        }}
+
+        startBtn.onclick = function() {{
+            if (recognition) {{
+                result.style.display = 'none';
+                recognition.start();
+            }}
+        }};
+
+        stopBtn.onclick = function() {{
+            if (recognition) {{
+                recognition.stop();
+            }}
+        }};
+    }})();
+    </script>
+    """
+    return html_code
+
+def speak_text_web(text, unique_id):
+    """Use Web Speech API for text-to-speech in browser"""
+    if not text:
+        return False
+
+    html_code = f"""
+    <div id="tts-container-{unique_id}" style="margin: 5px 0;">
+        <script>
+        (function() {{
+            if ('speechSynthesis' in window) {{
+                const utterance = new SpeechSynthesisUtterance(`{text.replace('`', '\\`')}`);
+                utterance.rate = 0.8;
+                utterance.pitch = 1;
+                utterance.volume = 0.8;
+
+                // Try to use a better voice if available
+                const voices = speechSynthesis.getVoices();
+                const preferredVoice = voices.find(voice =>
+                    voice.lang.startsWith('en') &&
+                    (voice.name.includes('Google') || voice.name.includes('Microsoft'))
+                );
+                if (preferredVoice) {{
+                    utterance.voice = preferredVoice;
+                }}
+
+                speechSynthesis.speak(utterance);
+            }}
+        }})();
+        </script>
+    </div>
+    """
+    return html_code
 
 def show_patient_detail(patient_id, df):
     """Show detailed patient information with sidebar showing patient history"""
@@ -1596,9 +1727,9 @@ def show_patient_detail(patient_id, df):
 
         # Handle voice input
         if voice_clicked:
-            if not SPEECH_RECOGNITION_AVAILABLE:
-                st.error("❌ Voice recognition is not available. Please install speech_recognition and pyaudio libraries.")
-            else:
+            # Use different voice input methods based on environment
+            if SPEECH_RECOGNITION_AVAILABLE and IS_LOCAL_ENV:
+                # Local environment with Python libraries
                 st.session_state[listening_key] = True
                 st.session_state[voice_key] = ""  # Clear previous voice input
                 with st.spinner("🎧 Listening... Please speak now!"):
@@ -1611,6 +1742,20 @@ def show_patient_detail(patient_id, df):
                     elif error:
                         st.error(f"❌ {error}")
                     st.session_state[listening_key] = False
+            else:
+                # Cloud environment - use Web Speech API
+                st.info("🎤 **Cloud Voice Recognition Active**")
+                st.markdown("**Instructions:** Click 'Start Recording' below, speak clearly, then click 'Stop Recording' or wait for auto-stop.")
+
+                # Create unique ID for this voice session
+                voice_session_id = f"voice_{patient_id}_{int(time.time())}"
+
+                # Display Web Speech API interface
+                html_content = create_web_speech_html(voice_session_id)
+                components.html(html_content, height=200)
+
+                # Instructions for manual input fallback
+                st.markdown("**Alternative:** If voice recognition doesn't work, you can type your question in the text box above.")
 
         # File upload section (outside of form)
         if upload_clicked:
@@ -1719,12 +1864,21 @@ def show_patient_detail(patient_id, df):
                     st.markdown(f"**Summary:** {file_summary}")
 
                     # Auto-speak the file summary
-                    with st.spinner("🔊 Reading file analysis..."):
-                        summary_text = f"File analysis complete. {file_summary}"
-                        if speak_text(summary_text):
-                            st.success("🔊 File analysis narrated")
-                        else:
-                            st.info("File analysis ready (audio unavailable)")
+                    summary_text = f"File analysis complete. {file_summary}"
+                    if SPEECH_RECOGNITION_AVAILABLE and IS_LOCAL_ENV:
+                        # Local environment - use Python TTS
+                        with st.spinner("🔊 Reading file analysis..."):
+                            if speak_text(summary_text):
+                                st.success("🔊 File analysis narrated")
+                            else:
+                                st.info("File analysis ready (audio unavailable)")
+                    else:
+                        # Cloud environment - use Web Speech API
+                        st.markdown("🔊 **File Analysis Audio:**")
+                        file_tts_id = f"file_tts_{patient_id}_{int(time.time())}"
+                        file_tts_html = speak_text_web(summary_text, file_tts_id)
+                        components.html(file_tts_html, height=50)
+                        st.success("🔊 File analysis ready with audio")
 
                 st.info("You can now ask questions about this file.")
 
@@ -1813,10 +1967,18 @@ def show_patient_detail(patient_id, df):
 
             # Auto-speak AI response if it came from voice input
             if st.session_state.get(f"auto_speak_{patient_id}", False):
-                threading.Thread(
-                    target=lambda: speak_text(ai_response),
-                    daemon=True
-                ).start()
+                if SPEECH_RECOGNITION_AVAILABLE and IS_LOCAL_ENV:
+                    # Local environment - use Python TTS
+                    threading.Thread(
+                        target=lambda: speak_text(ai_response),
+                        daemon=True
+                    ).start()
+                else:
+                    # Cloud environment - use Web Speech API
+                    tts_session_id = f"tts_{patient_id}_{int(time.time())}"
+                    tts_html = speak_text_web(ai_response, tts_session_id)
+                    st.markdown("🔊 **AI Response Audio:**")
+                    components.html(tts_html, height=50)
                 st.session_state[f"auto_speak_{patient_id}"] = False
 
             st.rerun()
