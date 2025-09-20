@@ -33,6 +33,20 @@ try:
     TTS_AVAILABLE = True
 except ImportError:
     TTS_AVAILABLE = False
+
+# Detect deployment environment
+import platform
+import sys
+
+# Enable voice features in local development environment
+IS_LOCAL_ENV = (
+    platform.system() == "Darwin" or  # macOS
+    "localhost" in str(sys.argv) or
+    "streamlit" in str(sys.argv) and "run" in str(sys.argv)
+)
+
+# Show voice button in local environment even if libraries are missing
+SHOW_VOICE_FEATURES = SPEECH_RECOGNITION_AVAILABLE or IS_LOCAL_ENV
 import json
 
 # Import RAG system
@@ -1564,7 +1578,7 @@ def show_patient_detail(patient_id, df):
                                        value=st.session_state[voice_key],
                                        key=f"simple_chat_input_{patient_id}")
             # Adjust columns based on voice availability
-            if SPEECH_RECOGNITION_AVAILABLE:
+            if SHOW_VOICE_FEATURES:
                 col1, col2, col3 = st.columns([2, 1, 1])
                 with col1:
                     submitted = st.form_submit_button("Send", use_container_width=True, type="primary")
@@ -1582,18 +1596,21 @@ def show_patient_detail(patient_id, df):
 
         # Handle voice input
         if voice_clicked:
-            st.session_state[listening_key] = True
-            st.session_state[voice_key] = ""  # Clear previous voice input
-            with st.spinner("🎧 Listening... Please speak now!"):
-                voice_text, error = listen_once()
-                if voice_text:
-                    st.session_state[voice_key] = voice_text
-                    st.session_state[f"auto_speak_{patient_id}"] = True  # Enable auto-speak for voice input
-                    st.success(f"✅ Heard: '{voice_text}'")
-                    st.rerun()
-                elif error:
-                    st.error(f"❌ {error}")
-                st.session_state[listening_key] = False
+            if not SPEECH_RECOGNITION_AVAILABLE:
+                st.error("❌ Voice recognition is not available. Please install speech_recognition and pyaudio libraries.")
+            else:
+                st.session_state[listening_key] = True
+                st.session_state[voice_key] = ""  # Clear previous voice input
+                with st.spinner("🎧 Listening... Please speak now!"):
+                    voice_text, error = listen_once()
+                    if voice_text:
+                        st.session_state[voice_key] = voice_text
+                        st.session_state[f"auto_speak_{patient_id}"] = True  # Enable auto-speak for voice input
+                        st.success(f"✅ Heard: '{voice_text}'")
+                        st.rerun()
+                    elif error:
+                        st.error(f"❌ {error}")
+                    st.session_state[listening_key] = False
 
         # File upload section (outside of form)
         if upload_clicked:
