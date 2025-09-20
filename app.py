@@ -982,89 +982,181 @@ def show_patient_detail(patient_id, df):
     
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # Vital Signs
-    st.markdown("### Vital Signs")
-    vital_col1, vital_col2 = st.columns(2)
-    
-    with vital_col1:
-        pulse_normal = 60 <= patient['pulse'] <= 100
-        st.metric("Pulse", f"{patient['pulse']} bpm")
-        if pulse_normal:
-            st.markdown("✓ Normal")
+    # Vital Signs & BMI Assessment
+    st.markdown("### Vital Signs & Assessment")
+
+    # Define vital signs and BMI data
+    vital_values = [
+        {
+            'name': 'Pulse',
+            'value': patient['pulse'],
+            'unit': 'bpm',
+            'normal_range': (60, 100),
+            'format': '.0f'
+        },
+        {
+            'name': 'Respiration',
+            'value': patient['respiration'],
+            'unit': '/min',
+            'normal_range': (12, 20),
+            'format': '.1f'
+        },
+        {
+            'name': 'BMI',
+            'value': patient['bmi'],
+            'unit': '',
+            'normal_range': (18.5, 25),
+            'format': '.1f',
+            'custom_status': True  # BMI has special categorization
+        }
+    ]
+
+    # Create 2-column layout for vital signs
+    col1, col2 = st.columns(2)
+
+    for i, vital in enumerate(vital_values):
+        # Special handling for BMI categories
+        if vital.get('custom_status'):
+            bmi_val = vital['value']
+            if bmi_val < 18.5:
+                status_text = "Underweight"
+                is_normal = False
+            elif 18.5 <= bmi_val < 25:
+                status_text = "Normal"
+                is_normal = True
+            elif 25 <= bmi_val < 30:
+                status_text = "Overweight"
+                is_normal = False
+            else:
+                status_text = "Obese"
+                is_normal = False
+            range_text = "18.5-24.9"
         else:
-            pulse_status = "High" if patient['pulse'] > 100 else "Low"
-            st.markdown(f"<span style='color: #D47A84;'>● {pulse_status}</span>", unsafe_allow_html=True)
-        
-    with vital_col2:
-        resp_normal = 12 <= patient['respiration'] <= 20
-        st.metric("Respiration", f"{patient['respiration']} /min")
-        if resp_normal:
-            st.markdown("✓ Normal")
+            # Standard range checking
+            is_normal = vital['normal_range'][0] <= vital['value'] <= vital['normal_range'][1]
+            if is_normal:
+                status_text = "Normal"
+            else:
+                status_text = "High" if vital['value'] > vital['normal_range'][1] else "Low"
+            range_text = f"{vital['normal_range'][0]}-{vital['normal_range'][1]}"
+
+        status_icon = "○" if is_normal else "●"
+        status_color = "#10B981" if is_normal else "#EF4444"  # Green for normal, red for abnormal
+
+        # Format value
+        formatted_value = f"{vital['value']:{vital['format']}}"
+
+        # Determine column (BMI goes to first available spot)
+        if i == 2:  # BMI - put in first column if both vital signs are done
+            target_col = col1
         else:
-            resp_status = "High" if patient['respiration'] > 20 else "Low"
-            st.markdown(f"<span style='color: #D47A84;'>● {resp_status}</span>", unsafe_allow_html=True)
-    
-    # BMI analysis (moved out of columns for single column layout)
-    st.markdown("### BMI Assessment")
-    bmi = patient['bmi']
-    if bmi < 18.5:
-        bmi_status = "Low"
-    elif 18.5 <= bmi < 25:
-        bmi_status = "Normal"
-    elif 25 <= bmi < 30:
-        bmi_status = "High"
-    else:
-        bmi_status = "High"
-    
-    st.metric("BMI", f"{bmi:.1f}")
-    if bmi_status == "Normal":
-        st.markdown("✓ Normal")
-    else:
-        st.markdown(f"<span style='color: #D47A84;'>● {bmi_status}</span>", unsafe_allow_html=True)
+            target_col = col1 if i % 2 == 0 else col2
+
+        with target_col:
+            # Custom styled metric card
+            st.markdown(f"""
+            <div style='background: #F8FAFC; padding: 16px; border-radius: 8px; border-left: 4px solid {status_color}; margin-bottom: 8px;'>
+                <div style='font-weight: 600; color: #1F2937; margin-bottom: 4px;'>{vital['name']}</div>
+                <div style='font-size: 24px; font-weight: 700; color: #1F2937; margin-bottom: 4px;'>
+                    {formatted_value} <span style='font-size: 14px; font-weight: 400; color: #6B7280;'>{vital['unit']}</span>
+                </div>
+                <div style='font-size: 12px; color: {status_color}; display: flex; align-items: center;'>
+                    <span style='margin-right: 4px;'>{status_icon}</span> {status_text}
+                    <span style='color: #9CA3AF; margin-left: 8px;'>({range_text}{' ' + vital['unit'] if vital['unit'] and not vital.get('custom_status') else ''})</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
     
     # Laboratory Results with interpretations
     st.markdown("### Laboratory Results")
-    
-    # Hematocrit
+
+    # Define lab values with normal ranges and interpretations
+    lab_values = [
+        {
+            'name': 'Hematocrit',
+            'value': patient['hematocrit'],
+            'unit': 'g/dL',
+            'normal_range': (12, 16),
+            'format': '.1f'
+        },
+        {
+            'name': 'Creatinine',
+            'value': patient['creatinine'],
+            'unit': 'mg/dL',
+            'normal_range': (0.6, 1.2),
+            'format': '.3f'
+        },
+        {
+            'name': 'Glucose',
+            'value': patient['glucose'],
+            'unit': 'mg/dL',
+            'normal_range': (70, 140),
+            'format': '.1f'
+        },
+        {
+            'name': 'Neutrophils',
+            'value': patient['neutrophils'],
+            'unit': '%',
+            'normal_range': (40, 70),
+            'format': '.1f'
+        },
+        {
+            'name': 'Sodium',
+            'value': patient['sodium'],
+            'unit': 'mEq/L',
+            'normal_range': (135, 145),
+            'format': '.1f'
+        },
+        {
+            'name': 'Blood Urea Nitrogen',
+            'value': patient['bloodureanitro'],
+            'unit': 'mg/dL',
+            'normal_range': (7, 20),
+            'format': '.1f'
+        }
+    ]
+
+    # Create a styled table with 2 columns
+    col1, col2 = st.columns(2)
+
+    for i, lab in enumerate(lab_values):
+        # Determine if value is normal
+        is_normal = lab['normal_range'][0] <= lab['value'] <= lab['normal_range'][1]
+        status_icon = "○" if is_normal else "●"
+
+        if is_normal:
+            status_text = "Normal"
+            status_color = "#10B981"  # Green
+        else:
+            status_text = "High" if lab['value'] > lab['normal_range'][1] else "Low"
+            status_color = "#EF4444"  # Red
+
+        # Format value according to specified format
+        formatted_value = f"{lab['value']:{lab['format']}}"
+
+        # Alternate between columns
+        with col1 if i % 2 == 0 else col2:
+            # Custom styled metric card
+            st.markdown(f"""
+            <div style='background: #F8FAFC; padding: 16px; border-radius: 8px; border-left: 4px solid {status_color}; margin-bottom: 8px;'>
+                <div style='font-weight: 600; color: #1F2937; margin-bottom: 4px;'>{lab['name']}</div>
+                <div style='font-size: 24px; font-weight: 700; color: #1F2937; margin-bottom: 4px;'>
+                    {formatted_value} <span style='font-size: 14px; font-weight: 400; color: #6B7280;'>{lab['unit']}</span>
+                </div>
+                <div style='font-size: 12px; color: {status_color}; display: flex; align-items: center;'>
+                    <span style='margin-right: 4px;'>{status_icon}</span> {status_text}
+                    <span style='color: #9CA3AF; margin-left: 8px;'>({lab['normal_range'][0]}-{lab['normal_range'][1]} {lab['unit']})</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # Extract lab values for subsequent use in clinical decision support
     hematocrit = patient['hematocrit']
-    hematocrit_normal = 12 <= hematocrit <= 16
-    hematocrit_color = "○" if hematocrit_normal else "●"
-    st.metric("Hematocrit", f"{hematocrit:.1f} g/dL")
-    if hematocrit_normal:
-        st.markdown("○ Normal")
-    else:
-        hematocrit_status = "High" if hematocrit > 16 else "Low"
-        st.markdown(f"<span style='color: #D47A84;'>● {hematocrit_status}</span>", unsafe_allow_html=True)
-        
-    # Creatinine
     creatinine = patient['creatinine']
-    creatinine_normal = 0.6 <= creatinine <= 1.2
-    creatinine_color = "○" if creatinine_normal else "●"
-    st.metric("Creatinine", f"{creatinine:.3f} mg/dL")
-    if creatinine_normal:
-        st.markdown("○ Normal")
-    else:
-        creatinine_status = "High" if creatinine > 1.2 else "Low"
-        st.markdown(f"<span style='color: #D47A84;'>● {creatinine_status}</span>", unsafe_allow_html=True)
-        
-    # Glucose
     glucose = patient['glucose']
-    glucose_normal = 70 <= glucose <= 140
-    glucose_color = "○" if glucose_normal else "●"
-    st.metric("Glucose", f"{glucose:.1f} mg/dL")
-    if glucose_normal:
-        st.markdown("○ Normal")
-    else:
-        glucose_status = "High" if glucose > 140 else "Low"
-        st.markdown(f"<span style='color: #D47A84;'>● {glucose_status}</span>", unsafe_allow_html=True)
-        
-    # Other lab values
-    st.metric("Neutrophils", f"{patient['neutrophils']:.1f}%")
-    st.metric("Sodium", f"{patient['sodium']:.1f} mEq/L")
-    st.metric("Blood Urea Nitrogen", f"{patient['bloodureanitro']:.1f} mg/dL")
-    
+
     st.markdown("<br>", unsafe_allow_html=True)
-    
+
     # Clinical Decision Support
     st.markdown("### 🎯 Priority Actions")
     
