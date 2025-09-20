@@ -1747,12 +1747,11 @@ def show_patient_detail(patient_id, df):
             # Display unified speech recognition interface
             html_content = f"""
                 <script>
-                // All JavaScript in one block to ensure proper loading
                 console.log('Voice script loading...');
 
                 // Global variables
-                let recognition = null;
-                let currentSpeechText = '';
+                var recognition = null;
+                var currentSpeechText = '';
 
                 // Simple test function
                 function testFunction() {{
@@ -2117,8 +2116,42 @@ def show_patient_detail(patient_id, df):
                     }}
                 }}
 
-                // Initialize when page loads
-                console.log('All speech functions loaded successfully');
+                // Initialize and verify all functions are loaded
+                function initializeVoiceInterface() {{
+                    console.log('Initializing voice interface...');
+
+                    // Check if all required functions are available
+                    var functionsToCheck = ['startSpeechRecognition', 'stopSpeechRecognition', 'useSpeechResult', 'testFunction'];
+                    var allFunctionsAvailable = true;
+
+                    for (var i = 0; i < functionsToCheck.length; i++) {{
+                        if (typeof window[functionsToCheck[i]] !== 'function') {{
+                            console.error('Function not available:', functionsToCheck[i]);
+                            allFunctionsAvailable = false;
+                        }} else {{
+                            console.log('Function available:', functionsToCheck[i]);
+                        }}
+                    }}
+
+                    if (allFunctionsAvailable) {{
+                        console.log('✅ All speech functions loaded successfully');
+                        if (document.getElementById('speechStatus')) {{
+                            document.getElementById('speechStatus').innerHTML = '✅ Voice interface ready! Click "Start Voice Input" to begin.';
+                            document.getElementById('speechStatus').style.color = '#00c851';
+                        }}
+                    }} else {{
+                        console.error('❌ Some speech functions failed to load');
+                        if (document.getElementById('speechStatus')) {{
+                            document.getElementById('speechStatus').innerHTML = '❌ Voice interface failed to load. Try refreshing the page.';
+                            document.getElementById('speechStatus').style.color = '#ff4444';
+                        }}
+                    }}
+                }}
+
+                // Initialize after a short delay to ensure DOM is ready
+                setTimeout(initializeVoiceInterface, 500);
+
+                console.log('Voice script loaded successfully');
                 </script>
 
                 <div style="margin: 10px 0; padding: 15px; background: #f0f2f6; border-radius: 8px;">
@@ -2148,7 +2181,7 @@ def show_patient_detail(patient_id, df):
                         ⏹️ Stop
                     </button>
                     <div id="speechStatus" style="margin-top: 10px; font-size: 14px; color: #666;">
-                        Click "Test Click" first to verify JavaScript works
+                        Loading voice interface...
                     </div>
                     <div id="speechResult" style="margin-top: 10px; padding: 10px; background: white; border-radius: 4px; min-height: 40px; border: 1px solid #ddd;">
                         <em>Your speech will appear here...</em>
