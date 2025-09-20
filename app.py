@@ -1783,56 +1783,116 @@ def show_patient_detail(patient_id, df):
                 window.useSpeechResult = function() {{
                     if (window.currentSpeechText) {{
                         console.log('Using speech result:', window.currentSpeechText);
-                        document.getElementById('speechStatus').innerHTML = '🔍 Finding input field...';
+                        document.getElementById('speechStatus').innerHTML = '🔍 Finding Streamlit input...';
 
                         // Mark that speech input was used - key for auto-TTS trigger
                         window.speechInputUsed = true;
 
-                        // Simple, reliable input detection - no over-engineering
-                        const candidates = document.querySelectorAll('input[type="text"], textarea, input:not([type])');
                         let targetInput = null;
+                        let submitButton = null;
 
-                        // Find first suitable input - keep it simple
-                        for (let input of candidates) {{
-                            const rect = input.getBoundingClientRect();
-                            const style = window.getComputedStyle(input);
+                        // Strategy 1: Find Streamlit text_input by data attributes
+                        const streamlitInputs = document.querySelectorAll('input[data-testid*="text"], input[aria-label*="chat"], input[placeholder*="Ask"], textarea[data-testid*="text"]');
+                        console.log('Found Streamlit inputs:', streamlitInputs.length);
 
-                            const isVisible = style.display !== 'none' &&
-                                            style.visibility !== 'hidden' &&
-                                            rect.width > 50 && rect.height > 20;
-                            const isUsable = !input.disabled && !input.readOnly;
+                        // Strategy 2: Find by nearby form submit buttons
+                        const submitButtons = document.querySelectorAll('button[kind="primary"], button[type="submit"], button:contains("Send")');
+                        console.log('Found submit buttons:', submitButtons.length);
 
-                            if (isVisible && isUsable) {{
-                                targetInput = input;
-                                break; // First match wins - no complex scoring
+                        for (let btn of submitButtons) {{
+                            const form = btn.closest('form') || btn.closest('[data-testid*="form"]');
+                            if (form) {{
+                                const inputs = form.querySelectorAll('input[type="text"], textarea, input:not([type])');
+                                for (let input of inputs) {{
+                                    const rect = input.getBoundingClientRect();
+                                    if (rect.width > 100 && rect.height > 20 && !input.disabled && !input.readOnly) {{
+                                        targetInput = input;
+                                        submitButton = btn;
+                                        break;
+                                    }}
+                                }}
+                                if (targetInput) break;
+                            }}
+                        }}
+
+                        // Strategy 3: Find by Streamlit widget structure
+                        if (!targetInput) {{
+                            const widgets = document.querySelectorAll('[data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea');
+                            for (let widget of widgets) {{
+                                const rect = widget.getBoundingClientRect();
+                                if (rect.width > 100 && rect.height > 20 && !widget.disabled && !widget.readOnly) {{
+                                    targetInput = widget;
+                                    // Look for nearby submit button
+                                    const container = widget.closest('.stForm, form, [data-testid*="form"]');
+                                    if (container) {{
+                                        submitButton = container.querySelector('button[kind="primary"], button[type="submit"]');
+                                    }}
+                                    break;
+                                }}
+                            }}
+                        }}
+
+                        // Strategy 4: Last resort - any visible text input
+                        if (!targetInput) {{
+                            const allInputs = document.querySelectorAll('input, textarea');
+                            for (let input of allInputs) {{
+                                const rect = input.getBoundingClientRect();
+                                const style = window.getComputedStyle(input);
+
+                                const isVisible = style.display !== 'none' &&
+                                                style.visibility !== 'hidden' &&
+                                                rect.width > 100 && rect.height > 20;
+                                const isUsable = !input.disabled && !input.readOnly;
+
+                                if (isVisible && isUsable) {{
+                                    targetInput = input;
+                                    break;
+                                }}
                             }}
                         }}
 
                         if (targetInput) {{
-                            // Simple insertion - no over-engineering
-                            targetInput.value = window.currentSpeechText;
+                            // Clear existing content first
+                            targetInput.value = '';
                             targetInput.focus();
 
-                            // Trigger essential events only
-                            targetInput.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                            targetInput.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                            // Insert text
+                            targetInput.value = window.currentSpeechText;
+
+                            // Trigger all necessary events for Streamlit
+                            const events = [
+                                new Event('input', {{ bubbles: true, cancelable: true }}),
+                                new Event('change', {{ bubbles: true, cancelable: true }}),
+                                new KeyboardEvent('keydown', {{ bubbles: true, cancelable: true, key: 'Enter' }}),
+                                new KeyboardEvent('keyup', {{ bubbles: true, cancelable: true, key: 'Enter' }})
+                            ];
+
+                            events.forEach(event => targetInput.dispatchEvent(event));
 
                             // Mark input as voice-originated
                             targetInput.setAttribute('data-voice-input', 'true');
-
-                            // Store voice input marker in sessionStorage
                             sessionStorage.setItem('voice_input_used', 'true');
 
                             document.getElementById('speechStatus').innerHTML = '✅ Text inserted!';
                             document.getElementById('speechStatus').style.color = '#00c851';
 
+                            // Try automatic submission after a short delay
+                            if (submitButton) {{
+                                setTimeout(() => {{
+                                    console.log('Auto-clicking submit button');
+                                    submitButton.click();
+                                    document.getElementById('speechStatus').innerHTML = '✅ Text sent!';
+                                }}, 500);
+                            }}
+
                             console.log('Speech text inserted successfully');
                         }} else {{
-                            // Fallback to clipboard
+                            console.log('No suitable input found, falling back to clipboard');
+                            // Fallback to clipboard only if no input found
                             if (navigator.clipboard && navigator.clipboard.writeText) {{
                                 navigator.clipboard.writeText(window.currentSpeechText).then(() => {{
-                                    document.getElementById('speechStatus').innerHTML = '✅ Copied to clipboard!';
-                                    document.getElementById('speechStatus').style.color = '#00c851';
+                                    document.getElementById('speechStatus').innerHTML = '📋 Copied to clipboard - paste manually';
+                                    document.getElementById('speechStatus').style.color = '#ff9800';
                                 }}).catch(() => {{
                                     document.getElementById('speechStatus').innerHTML = '⚠️ Manual copy needed';
                                     document.getElementById('speechStatus').style.color = '#ff9800';
@@ -2033,7 +2093,7 @@ def show_patient_detail(patient_id, df):
                     </div>
                     <button id="useSpeech" onclick="window.useSpeechResult();"
                             style="background: #00c851; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-top: 10px; display: none;">
-                        ✅ Use This Text
+                        📝 Insert into Chat
                     </button>
                 </div>
 
