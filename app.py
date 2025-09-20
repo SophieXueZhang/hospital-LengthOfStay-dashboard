@@ -41,15 +41,39 @@ except Exception as e:
 # Load environment variables
 load_dotenv()
 
-# Handle Streamlit Cloud secrets
-try:
-    # Try to get API key from Streamlit secrets first
-    OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv('OPENAI_API_KEY'))
-    if OPENAI_API_KEY:
-        os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
-except:
-    # Fallback to environment variable
-    pass
+# Handle OpenAI API Key configuration
+def setup_openai_api():
+    """设置OpenAI API密钥"""
+    # 检查多个来源的API密钥
+    api_key = None
+
+    # 1. 检查Streamlit session state
+    if 'openai_api_key' in st.session_state and st.session_state.openai_api_key:
+        api_key = st.session_state.openai_api_key
+
+    # 2. 检查Streamlit secrets (安全处理)
+    elif api_key is None:
+        try:
+            if hasattr(st, 'secrets') and "OPENAI_API_KEY" in st.secrets:
+                api_key = st.secrets["OPENAI_API_KEY"]
+        except FileNotFoundError:
+            # secrets文件不存在，跳过
+            pass
+        except Exception:
+            # 其他secrets相关错误，跳过
+            pass
+
+    # 3. 检查环境变量
+    if api_key is None:
+        api_key = os.getenv('OPENAI_API_KEY')
+
+    if api_key:
+        os.environ['OPENAI_API_KEY'] = api_key
+        return True
+    return False
+
+# 设置API密钥
+setup_openai_api()
 
 # Nordic color palette - Ultra minimal
 COLORS = {
@@ -638,75 +662,56 @@ Guidelines:
             return f"I can help you analyze {name}'s case. Ask about risk factors, lab values, or treatment plans."
 
 def show_patient_detail(patient_id, df):
-    """Show detailed patient information with sidebar chat and comprehensive layout"""
+    """Show detailed patient information with sidebar showing patient history"""
     patient = df[df['eid'] == patient_id].iloc[0]
-    
-    # Sidebar with patient-specific chat
+
+    # Sidebar with patient history
     with st.sidebar:
-        st.markdown("### AI Medical Assistant")
+        st.markdown("### Patient History")
         st.markdown(f"**Patient:** {patient['full_name']}")
-        
-        # RAG system status indicator
-        if RAG_AVAILABLE:
-            st.success("✅ Paper-based insights enabled")
+        st.markdown("---")
+
+        # Get all records for this patient (by name)
+        patient_name = patient['full_name']
+        patient_history = df[df['full_name'] == patient_name].sort_values('vdate')
+
+        if len(patient_history) > 1:
+            st.markdown(f"**Total Admissions:** {len(patient_history)}")
+            st.markdown(f"**Total Length of Stay:** {patient_history['lengthofstay'].sum()} days")
+            st.markdown("---")
+
+            # Display each admission
+            for idx, (_, record) in enumerate(patient_history.iterrows(), 1):
+                is_current = record['eid'] == patient_id
+
+                # Highlight current record
+                if is_current:
+                    st.markdown(f"**📍 Admission #{idx} (Current)**")
+                else:
+                    st.markdown(f"**Admission #{idx}**")
+
+                st.markdown(f"• **Admission Date:** {record['vdate']}")
+                st.markdown(f"• **Discharge Date:** {record['discharged']}")
+                st.markdown(f"• **Length of Stay:** {record['lengthofstay']} days")
+                st.markdown(f"• **Facility:** {record['facid']}")
+
+                # Show key medical indicators
+                if pd.notna(record['glucose']):
+                    st.markdown(f"• **Glucose:** {record['glucose']:.1f}")
+                if pd.notna(record['creatinine']):
+                    st.markdown(f"• **Creatinine:** {record['creatinine']:.2f}")
+
+                # Add button to view this record (if not current)
+                if not is_current:
+                    if st.button(f"View Admission #{idx}", key=f"history_{record['eid']}"):
+                        st.session_state.selected_patient = record['eid']
+                        st.rerun()
+
+                st.markdown("---")
         else:
-            st.info("💡 Basic AI assistant available (paper database not loaded)")
-        
-        st.markdown("---")
-        
-        # Initialize chat for this patient
-        chat_key = f"chat_history_{patient['eid']}"
-        if chat_key not in st.session_state:
-            st.session_state[chat_key] = [
-                {"role": "assistant", "content": f"Hello! I'm here to help with {patient['full_name']}'s case. What would you like to know?"}
-            ]
-        
-        # Display chat history
-        for message in st.session_state[chat_key]:
-            if message["role"] == "user":
-                st.markdown(f"**You:** {message['content']}")
-            else:
-                st.markdown(f"**AI:** {message['content']}")
-        
-        # Chat input with form for Enter key submission
-        with st.form(key=f"chat_form_{patient['eid']}", clear_on_submit=True):
-            user_input = st.text_input("Ask about this patient...", key=f"chat_input_{patient['eid']}")
-            submitted = st.form_submit_button("Send")
-        
-        if submitted and user_input:
-            # Add user message
-            st.session_state[chat_key].append({"role": "user", "content": user_input})
-            
-            # Generate AI response using OpenAI API
-            ai_response = generate_patient_response(patient, user_input)
-            st.session_state[chat_key].append({"role": "assistant", "content": ai_response})
-            st.rerun()
-        
-        # Quick action buttons
-        st.markdown("---")
-        st.markdown("**Quick Actions:**")
-        
-        if st.button("Risk Assessment", key=f"risk_btn_{patient['eid']}"):
-            risk_msg = f"Please provide a comprehensive risk assessment for {patient['full_name']} based on current lab values and clinical data."
-            st.session_state[chat_key].append({"role": "user", "content": risk_msg})
-            ai_response = generate_patient_response(patient, risk_msg)
-            st.session_state[chat_key].append({"role": "assistant", "content": ai_response})
-            st.rerun()
-        
-        if st.button("Treatment Plan", key=f"treatment_btn_{patient['eid']}"):
-            treatment_msg = f"What treatment recommendations and interventions would you suggest for {patient['full_name']} based on their current condition?"
-            st.session_state[chat_key].append({"role": "user", "content": treatment_msg})
-            ai_response = generate_patient_response(patient, treatment_msg)
-            st.session_state[chat_key].append({"role": "assistant", "content": ai_response})
-            st.rerun()
-        
-        if st.button("🏠 Discharge Planning", key=f"discharge_btn_{patient['eid']}"):
-            discharge_msg = f"Evaluate {patient['full_name']}'s readiness for discharge and provide discharge planning recommendations."
-            st.session_state[chat_key].append({"role": "user", "content": discharge_msg})
-            ai_response = generate_patient_response(patient, discharge_msg)
-            st.session_state[chat_key].append({"role": "assistant", "content": ai_response})
-            st.rerun()
-    
+            st.markdown("**First Admission**")
+            st.info("This is the patient's first admission record")
+
     # Main content area
     # Back button
     if st.button("← Back to Dashboard"):
