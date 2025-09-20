@@ -888,7 +888,7 @@ def speak_text_web(text, unique_id):
         <script>
         (function() {{
             if ('speechSynthesis' in window) {{
-                const utterance = new SpeechSynthesisUtterance(`{text.replace('`', '\\`')}`);
+                const utterance = new SpeechSynthesisUtterance("{text.replace('`', '\\\\`')}");
                 utterance.rate = 0.8;
                 utterance.pitch = 1;
                 utterance.volume = 0.8;
@@ -1986,7 +1986,7 @@ def show_patient_detail(patient_id, df):
                                 '<strong>🔍 Debug Info:</strong><br>' +
                                 debugInfo.join('<br>') +
                                 '<br><br><strong>📋 Text to copy:</strong><br>' +
-                                '<div style="background:#f0f0f0; padding:8px; border-radius:4px; user-select:all; cursor:text;" onclick="this.focus(); document.execCommand(\'selectAll\');">' +
+                                '<div style="background:#f0f0f0; padding:8px; border-radius:4px; user-select:all; cursor:text;" onclick="this.focus(); document.execCommand(\\'selectAll\\');">' +
                                 window.currentSpeechText +
                                 '</div>';
                         }}
