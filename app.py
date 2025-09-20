@@ -18,6 +18,10 @@ import os
 from dotenv import load_dotenv
 import openai
 import asyncio
+import speech_recognition as sr
+import pyttsx3
+import threading
+import time
 import json
 
 # Import RAG system
@@ -660,6 +664,88 @@ Guidelines:
                 return "Monitor for 24-48 hours. If stable, consider discharge planning."
         else:
             return f"I can help you analyze {name}'s case. Ask about risk factors, lab values, or treatment plans."
+
+# Voice functionality
+def init_speech_components():
+    """Initialize speech recognition and text-to-speech components"""
+    recognizer = sr.Recognizer()
+
+    try:
+        # Try to initialize TTS engine
+        tts_engine = pyttsx3.init()
+        # Configure TTS settings
+        tts_engine.setProperty('rate', 150)  # Speed of speech
+        tts_engine.setProperty('volume', 0.8)  # Volume level
+        return recognizer, tts_engine
+    except Exception as e:
+        st.warning(f"Text-to-speech not available: {e}")
+        return recognizer, None
+
+def listen_once():
+    """Listen for voice input and return transcribed text"""
+    recognizer, _ = init_speech_components()
+
+    try:
+        with sr.Microphone() as source:
+            # Adjust for ambient noise
+            recognizer.adjust_for_ambient_noise(source, duration=0.5)
+
+            # Listen for audio with timeout
+            audio = recognizer.listen(source, timeout=10, phrase_time_limit=8)
+
+            # Recognize speech using Google's service
+            text = recognizer.recognize_google(audio)
+            return text, None
+
+    except sr.WaitTimeoutError:
+        return None, "Listening timeout. Please try again."
+    except sr.UnknownValueError:
+        return None, "Could not understand the audio. Please speak clearly."
+    except sr.RequestError as e:
+        return None, f"Speech recognition service error: {e}"
+    except Exception as e:
+        return None, f"Microphone error: {e}"
+
+def speak_text(text):
+    """Convert text to speech"""
+    try:
+        _, tts_engine = init_speech_components()
+
+        if tts_engine is None:
+            # Fallback to macOS system 'say' command
+            try:
+                def _speak_system():
+                    import subprocess
+                    subprocess.run(['say', text], check=True, capture_output=True)
+
+                speech_thread = threading.Thread(target=_speak_system, daemon=True)
+                speech_thread.start()
+                return True
+            except Exception as sys_e:
+                st.warning(f"System TTS also failed: {sys_e}")
+                return False
+
+        # Run TTS in a separate thread to prevent blocking
+        def _speak():
+            tts_engine.say(text)
+            tts_engine.runAndWait()
+
+        speech_thread = threading.Thread(target=_speak, daemon=True)
+        speech_thread.start()
+        return True
+    except Exception as e:
+        # Try system say command as fallback
+        try:
+            def _speak_system():
+                import subprocess
+                subprocess.run(['say', text], check=True, capture_output=True)
+
+            speech_thread = threading.Thread(target=_speak_system, daemon=True)
+            speech_thread.start()
+            return True
+        except Exception as sys_e:
+            st.error(f"All TTS options failed. pyttsx3: {e}, system: {sys_e}")
+            return False
 
 def show_patient_detail(patient_id, df):
     """Show detailed patient information with sidebar showing patient history"""
@@ -1326,6 +1412,25 @@ def show_patient_detail(patient_id, df):
                 {"role": "assistant", "content": f"I've reviewed {patient['full_name']}'s medical records and am ready to discuss {pronoun} case. How may I assist you with the clinical assessment or treatment planning?"}
             ]
 
+        # Display uploaded file info if any
+        file_key = f"uploaded_file_{patient_id}"
+        if file_key in st.session_state:
+            file_info = st.session_state[file_key]
+
+            # Display file details in an expander
+            with st.expander(f"📎 **Attached File:** {file_info['name']}", expanded=True):
+                col1, col2 = st.columns([1, 2])
+                with col1:
+                    st.write(f"**Type:** {file_info['type']}")
+                    st.write(f"**Size:** {file_info['size']:,} bytes")
+                with col2:
+                    if 'summary' in file_info and file_info['summary']:
+                        st.write(f"**AI Analysis:** {file_info['summary']}")
+
+                # Show content preview for text files
+                if 'content_preview' in file_info and file_info['content_preview']:
+                    st.text_area("Content Preview", file_info['content_preview'], height=100, disabled=True)
+
         # Display chat history
         for message in st.session_state[chat_key]:
             if message["role"] == "user":
@@ -1333,15 +1438,167 @@ def show_patient_detail(patient_id, df):
             else:
                 st.markdown(f"**🤖 AI:** {message['content']}")
 
+        # Initialize voice-related session state
+        voice_key = f"voice_input_{patient_id}"
+        listening_key = f"listening_{patient_id}"
+
+        if voice_key not in st.session_state:
+            st.session_state[voice_key] = ""
+        if listening_key not in st.session_state:
+            st.session_state[listening_key] = False
+
         # Chat input
         with st.form(key=f"simple_chat_form_{patient_id}", clear_on_submit=True):
-            user_input = st.text_input("Ask about this patient...", key=f"simple_chat_input_{patient_id}")
-            col1, col2 = st.columns([3, 1])
+            user_input = st.text_input("Ask about this patient...",
+                                       value=st.session_state[voice_key],
+                                       key=f"simple_chat_input_{patient_id}")
+            col1, col2, col3 = st.columns([2, 1, 1])
             with col1:
                 submitted = st.form_submit_button("Send", use_container_width=True, type="primary")
             with col2:
-                if st.form_submit_button("🔊 Voice", use_container_width=True):
-                    st.info("Voice input coming soon!")
+                voice_clicked = st.form_submit_button("🎤 Voice", use_container_width=True)
+            with col3:
+                upload_clicked = st.form_submit_button("📎 File", use_container_width=True)
+
+        # Handle voice input
+        if voice_clicked:
+            st.session_state[listening_key] = True
+            st.session_state[voice_key] = ""  # Clear previous voice input
+            with st.spinner("🎧 Listening... Please speak now!"):
+                voice_text, error = listen_once()
+                if voice_text:
+                    st.session_state[voice_key] = voice_text
+                    st.session_state[f"auto_speak_{patient_id}"] = True  # Enable auto-speak for voice input
+                    st.success(f"✅ Heard: '{voice_text}'")
+                    st.rerun()
+                elif error:
+                    st.error(f"❌ {error}")
+                st.session_state[listening_key] = False
+
+        # File upload section (outside of form)
+        if upload_clicked:
+            st.session_state[f"show_uploader_{patient_id}"] = True
+
+        # Show file uploader if triggered
+        if st.session_state.get(f"show_uploader_{patient_id}", False):
+            st.markdown("### 📎 Upload File")
+            uploaded_file = st.file_uploader(
+                "Choose a file to attach to your query",
+                type=['pdf', 'jpg', 'jpeg', 'png', 'txt', 'doc', 'docx'],
+                key=f"file_upload_{patient_id}"
+            )
+
+            if uploaded_file is not None:
+                # Store file info in session state
+                file_key = f"uploaded_file_{patient_id}"
+
+                # Read file content for summary
+                file_content = ""
+                file_type_info = ""
+                try:
+                    # Reset file pointer
+                    uploaded_file.seek(0)
+
+                    if uploaded_file.type == "text/plain":
+                        file_content = str(uploaded_file.read(), "utf-8")
+                        file_type_info = "Text file content analyzed"
+                    elif uploaded_file.type == "application/pdf":
+                        # For PDF, we'll indicate it's available but needs special handling
+                        file_type_info = "PDF file detected - content extraction would require additional libraries"
+                        file_content = "PDF content not directly readable without PyPDF2 or similar library"
+                    elif uploaded_file.type.startswith("image/"):
+                        file_type_info = "Image file detected - visual content cannot be analyzed without computer vision"
+                        file_content = "Image content requires visual analysis capabilities"
+                    elif uploaded_file.name.endswith('.csv'):
+                        # Handle CSV files
+                        file_content = str(uploaded_file.read(), "utf-8")
+                        file_type_info = "CSV file content analyzed"
+                    else:
+                        # Try to read as text
+                        try:
+                            file_content = str(uploaded_file.read(), "utf-8")
+                            file_type_info = "Document content read as text"
+                        except:
+                            file_content = "Binary file - content not readable as text"
+                            file_type_info = "Binary file detected"
+
+                    st.info(file_type_info)
+                except Exception as e:
+                    st.warning(f"Could not read file content: {e}")
+                    file_content = "File content could not be read"
+
+                # Generate file summary using AI based on actual content
+                file_summary = ""
+                if 'openai_api_key' in st.session_state and st.session_state.openai_api_key and file_content:
+                    try:
+                        from openai import OpenAI
+                        client = OpenAI(api_key=st.session_state.openai_api_key)
+
+                        # Limit content length for API call
+                        content_sample = file_content[:2000] + "..." if len(file_content) > 2000 else file_content
+
+                        summary_prompt = f"""
+                        Analyze this uploaded file content for medical relevance to patient {patient['full_name']}:
+
+                        File name: {uploaded_file.name}
+                        File type: {uploaded_file.type}
+                        Patient context: {patient.get('admission_reason', 'General admission')}
+
+                        ACTUAL FILE CONTENT:
+                        {content_sample}
+
+                        Based on the ACTUAL content above, provide a factual medical summary of what this file contains and how it relates to the patient's care. Only describe what you can actually see in the content. If the content is not medical or not readable, say so honestly. Be concise (2-3 sentences).
+                        """
+
+                        response = client.chat.completions.create(
+                            model="gpt-3.5-turbo",
+                            messages=[
+                                {"role": "system", "content": "You are a medical file analyst. Analyze actual file content and provide honest, factual summaries. Never make assumptions about content you cannot see."},
+                                {"role": "user", "content": summary_prompt}
+                            ],
+                            max_tokens=150,
+                            temperature=0.1
+                        )
+
+                        file_summary = response.choices[0].message.content.strip()
+                    except Exception as e:
+                        file_summary = f"Could not generate AI summary: {e}"
+                else:
+                    file_summary = "AI analysis requires OpenAI API key and readable file content"
+
+                st.session_state[file_key] = {
+                    "name": uploaded_file.name,
+                    "type": uploaded_file.type,
+                    "size": uploaded_file.size,
+                    "summary": file_summary,
+                    "content_preview": file_content[:200] + "..." if len(file_content) > 200 else file_content
+                }
+
+                st.success(f"✅ File '{uploaded_file.name}' uploaded successfully!")
+
+                # Display file summary
+                if file_summary:
+                    st.markdown("### 📋 File Analysis")
+                    st.markdown(f"**Summary:** {file_summary}")
+
+                    # Auto-speak the file summary
+                    with st.spinner("🔊 Reading file analysis..."):
+                        summary_text = f"File analysis complete. {file_summary}"
+                        if speak_text(summary_text):
+                            st.success("🔊 File analysis narrated")
+                        else:
+                            st.info("File analysis ready (audio unavailable)")
+
+                st.info("You can now ask questions about this file.")
+
+                # Hide uploader after successful upload
+                st.session_state[f"show_uploader_{patient_id}"] = False
+                st.rerun()
+
+            # Add close button for uploader
+            if st.button("❌ Cancel Upload", key=f"cancel_upload_{patient_id}"):
+                st.session_state[f"show_uploader_{patient_id}"] = False
+                st.rerun()
 
         if submitted and user_input:
             # Add user message
@@ -1379,13 +1636,28 @@ def show_patient_detail(patient_id, df):
                     - Depression: {'Yes' if patient.get('depress', 0) == 1 else 'No'}
                     """
 
+                    # Check if there's an uploaded file
+                    file_key = f"uploaded_file_{patient_id}"
+                    file_context = ""
+                    if file_key in st.session_state:
+                        file_info = st.session_state[file_key]
+                        file_context = f"\n\nAttached file: {file_info['name']} (Type: {file_info['type']}, Size: {file_info['size']} bytes)"
+
+                        # Include AI-generated file summary if available
+                        if 'summary' in file_info and file_info['summary']:
+                            file_context += f"\nFile Analysis: {file_info['summary']}"
+
+                        # Include content preview for text files
+                        if 'content_preview' in file_info and file_info['content_preview']:
+                            file_context += f"\nContent Preview: {file_info['content_preview']}"
+
                     response = client.chat.completions.create(
                         model="gpt-3.5-turbo",
                         messages=[
-                            {"role": "system", "content": "You are a senior medical specialist with 20+ years of clinical experience in internal medicine, emergency care, and hospital management. You have expertise in interpreting lab values, assessing patient risk factors, and providing evidence-based medical recommendations. Respond as an experienced clinician would - provide direct, professional medical analysis without introducing yourself. Be clear, actionable, and use appropriate medical terminology while explaining complex concepts when needed. Always use correct pronouns based on patient gender."},
-                            {"role": "user", "content": f"Patient context:\n{patient_context}\n\nUser question: {user_input}"}
+                            {"role": "system", "content": "You are a senior medical specialist with 20+ years of clinical experience in internal medicine, emergency care, and hospital management. You have expertise in interpreting lab values, assessing patient risk factors, and providing evidence-based medical recommendations. Respond as an experienced clinician would - provide direct, professional medical analysis without introducing yourself. Be clear, actionable, and use appropriate medical terminology while explaining complex concepts when needed. Always use correct pronouns based on patient gender. When files are attached, acknowledge them and provide guidance on how they might relate to the patient's care."},
+                            {"role": "user", "content": f"Patient context:\n{patient_context}{file_context}\n\nUser question: {user_input}"}
                         ],
-                        max_tokens=200,
+                        max_tokens=500,
                         temperature=0.7
                     )
 
@@ -1395,7 +1667,21 @@ def show_patient_detail(patient_id, df):
 
             except Exception as e:
                 ai_response = f"I'm having trouble connecting to the AI service. Error: {str(e)}. Please check your API key or try again later."
+
+            # Add AI response to chat
             st.session_state[chat_key].append({"role": "assistant", "content": ai_response})
+
+            # Clear voice input after successful submission
+            st.session_state[voice_key] = ""
+
+            # Auto-speak AI response if it came from voice input
+            if st.session_state.get(f"auto_speak_{patient_id}", False):
+                threading.Thread(
+                    target=lambda: speak_text(ai_response),
+                    daemon=True
+                ).start()
+                st.session_state[f"auto_speak_{patient_id}"] = False
+
             st.rerun()
 
         # Close chat button
