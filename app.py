@@ -1904,84 +1904,215 @@ def show_patient_detail(patient_id, df):
                         console.log('Using speech result:', currentSpeechText);
                         document.getElementById('speechStatus').innerHTML = '🔍 Finding input field...';
 
-                        // Multiple strategies to find the text input field
+                        // Enhanced input field detection with comprehensive strategies
                         let targetInput = null;
                         let debugInfo = [];
 
-                        // Enhanced Strategy 0: Streamlit Cloud specific selectors (highest priority)
-                        const cloudSelectors = [
-                            'input[data-testid="stTextInput"] input',
-                            'input[data-testid="textInput"] input',
-                            '.stTextInput input',
-                            '.st-emotion-cache input[type="text"]',
-                            'div[data-testid="stChatInput"] input',
-                            'div[data-testid="chatInput"] input',
-                            'input[type="text"][placeholder*="Ask"]',
-                            'textarea[placeholder*="Ask"]',
-                            'input[data-baseweb="input"]'
-                        ];
+                        // Log page state for debugging
+                        debugInfo.push(`URL: ${{window.location.href}}`);
+                        debugInfo.push(`Title: ${{document.title}}`);
 
-                        for (let selector of cloudSelectors) {{
-                            const cloudInputs = document.querySelectorAll(selector);
-                            if (cloudInputs.length > 0) {{
-                                debugInfo.push(`Cloud selector "${{selector}}": Found ${{cloudInputs.length}} inputs`);
-                                targetInput = cloudInputs[cloudInputs.length - 1];
-                                debugInfo.push('✅ Enhanced Strategy 0 success: Found Streamlit Cloud input');
-                                break;
-                            }}
-                        }}
-
-                        // Strategy 1: Look for input with "Ask about" placeholder
+                        // Strategy 0: Streamlit-specific selectors with comprehensive coverage
                         if (!targetInput) {{
-                            const textInputs = document.querySelectorAll('input[type="text"], textarea');
-                            debugInfo.push(`Found ${{textInputs.length}} text inputs`);
+                            const streamlitSelectors = [
+                                // Streamlit v1.30+ chat input selectors
+                                'input[data-testid="stTextInput"]',
+                                'textarea[data-testid="stTextArea"]',
+                                'input[data-testid="textInput"]',
+                                'textarea[data-testid="textArea"]',
+                                'div[data-testid="stChatInput"] input',
+                                'div[data-testid="stChatInput"] textarea',
 
-                            for (let input of textInputs) {{
-                                debugInfo.push(`Input placeholder: "${{input.placeholder || 'none'}}"`);
-                                if (input.placeholder && (
-                                    input.placeholder.includes('Ask about') ||
-                                    input.placeholder.includes('Type a message') ||
-                                    input.placeholder.includes('Enter your question') ||
-                                    input.placeholder.toLowerCase().includes('chat')
-                                )) {{
-                                    targetInput = input;
-                                    debugInfo.push('✅ Strategy 1 success: Found chat placeholder');
+                                // Streamlit class-based selectors
+                                '.stTextInput input',
+                                '.stTextArea textarea',
+                                '.st-emotion-cache input[type="text"]',
+                                '.st-emotion-cache textarea',
+
+                                // Modern Streamlit selectors
+                                'input[data-baseweb="input"]',
+                                'textarea[data-baseweb="textarea"]',
+
+                                // Any input with chat-related attributes
+                                'input[placeholder*="Ask"]',
+                                'input[placeholder*="Type"]',
+                                'input[placeholder*="Enter"]',
+                                'input[placeholder*="message"]',
+                                'input[placeholder*="question"]',
+                                'textarea[placeholder*="Ask"]',
+                                'textarea[placeholder*="Type"]',
+                                'textarea[placeholder*="Enter"]'
+                            ];
+
+                            for (let selector of streamlitSelectors) {{
+                                const elements = document.querySelectorAll(selector);
+                                if (elements.length > 0) {{
+                                    debugInfo.push(`Selector "${{selector}}": found ${{elements.length}} elements`);
+                                    // Use the last element (most recent/bottom of page)
+                                    targetInput = elements[elements.length - 1];
+                                    debugInfo.push(`✅ Strategy 0 success: Found Streamlit input with "${{selector}}"`);
                                     break;
                                 }}
                             }}
                         }}
 
-                        // Strategy 2: Look for the most recent text input (likely the chat input)
+                        // Strategy 1: Look for largest visible text input (common for chat interfaces)
                         if (!targetInput) {{
-                            const textInputs = document.querySelectorAll('input[type="text"], textarea');
-                            if (textInputs.length > 0) {{
-                                targetInput = textInputs[textInputs.length - 1];
-                                debugInfo.push('✅ Strategy 2 success: Using last text input');
+                            const allInputs = document.querySelectorAll('input, textarea');
+                            let largestInput = null;
+                            let largestArea = 0;
+
+                            allInputs.forEach((input, index) => {{
+                                const rect = input.getBoundingClientRect();
+                                const style = window.getComputedStyle(input);
+                                const isVisible = style.display !== 'none' &&
+                                                style.visibility !== 'hidden' &&
+                                                rect.width > 0 && rect.height > 0;
+                                const canAcceptText = input.type === 'text' ||
+                                                    input.type === 'search' ||
+                                                    input.tagName.toLowerCase() === 'textarea' ||
+                                                    !input.type;
+
+                                if (isVisible && canAcceptText && !input.disabled && !input.readOnly) {{
+                                    const area = rect.width * rect.height;
+                                    debugInfo.push(`Input ${{index}}: ${{Math.round(rect.width)}}x${{Math.round(rect.height)}} = ${{Math.round(area)}}px², type="${{input.type || 'text'}}", tag="${{input.tagName.toLowerCase()}}"`);
+
+                                    if (area > largestArea) {{
+                                        largestArea = area;
+                                        largestInput = input;
+                                    }}
+                                }}
+                            }});
+
+                            if (largestInput && largestArea > 1000) {{ // Minimum reasonable size
+                                targetInput = largestInput;
+                                debugInfo.push(`✅ Strategy 1 success: Found largest input (${{Math.round(largestArea)}}px²)`);
+                            }}
+                        }}
+
+                        // Strategy 2: Look for inputs by position (bottom of page = likely chat input)
+                        if (!targetInput) {{
+                            const textInputs = document.querySelectorAll('input[type="text"], input:not([type]), textarea');
+                            let bottomInput = null;
+                            let bottomY = -1;
+
+                            textInputs.forEach((input, index) => {{
+                                const rect = input.getBoundingClientRect();
+                                const style = window.getComputedStyle(input);
+                                const isVisible = style.display !== 'none' &&
+                                                style.visibility !== 'hidden' &&
+                                                rect.width > 10 && rect.height > 10;
+
+                                if (isVisible && !input.disabled && !input.readOnly) {{
+                                    const inputBottom = rect.bottom;
+                                    debugInfo.push(`Input ${{index}}: bottom at ${{Math.round(inputBottom)}}px`);
+
+                                    if (inputBottom > bottomY) {{
+                                        bottomY = inputBottom;
+                                        bottomInput = input;
+                                    }}
+                                }}
+                            }});
+
+                            if (bottomInput) {{
+                                targetInput = bottomInput;
+                                debugInfo.push(`✅ Strategy 2 success: Found bottom-most input (y=${{Math.round(bottomY)}})`);
+                            }}
+                        }}
+
+                        // Strategy 3: Any visible text input as last resort
+                        if (!targetInput) {{
+                            const textInputs = document.querySelectorAll('input[type="text"], input:not([type]), textarea');
+                            for (let input of textInputs) {{
+                                const rect = input.getBoundingClientRect();
+                                const style = window.getComputedStyle(input);
+                                const isVisible = style.display !== 'none' &&
+                                                style.visibility !== 'hidden' &&
+                                                rect.width > 0 && rect.height > 0;
+
+                                if (isVisible && !input.disabled && !input.readOnly) {{
+                                    targetInput = input;
+                                    debugInfo.push('✅ Strategy 3 success: Found any visible text input');
+                                    break;
+                                }}
                             }}
                         }}
 
                         console.log('Debug info:', debugInfo);
 
                         if (targetInput) {{
+                            // Clear any existing value
+                            targetInput.value = '';
+
+                            // Set new value
                             targetInput.value = currentSpeechText;
                             targetInput.focus();
 
-                            // Trigger multiple events to ensure Streamlit updates
-                            const inputEvent = new Event('input', {{ bubbles: true }});
-                            const changeEvent = new Event('change', {{ bubbles: true }});
-                            const keyupEvent = new Event('keyup', {{ bubbles: true }});
-                            targetInput.dispatchEvent(inputEvent);
-                            targetInput.dispatchEvent(changeEvent);
-                            targetInput.dispatchEvent(keyupEvent);
+                            // Comprehensive event triggering for maximum compatibility
+                            const events = [
+                                new Event('focus', {{ bubbles: true }}),
+                                new Event('input', {{ bubbles: true }}),
+                                new Event('change', {{ bubbles: true }}),
+                                new Event('keyup', {{ bubbles: true }}),
+                                new KeyboardEvent('keydown', {{ key: 'Enter', bubbles: true }}),
+                                new Event('blur', {{ bubbles: true }})
+                            ];
+
+                            events.forEach(event => {{
+                                try {{
+                                    targetInput.dispatchEvent(event);
+                                }} catch (e) {{
+                                    console.warn('Event dispatch failed:', e);
+                                }}
+                            }});
+
+                            // Special handling for React/modern frameworks
+                            try {{
+                                const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                                    window.HTMLInputElement.prototype, 'value'
+                                ).set;
+                                nativeInputValueSetter.call(targetInput, currentSpeechText);
+
+                                const reactEvent = new Event('input', {{ bubbles: true }});
+                                reactEvent.simulated = true;
+                                targetInput.dispatchEvent(reactEvent);
+                            }} catch (e) {{
+                                console.warn('React-style event failed:', e);
+                            }}
 
                             document.getElementById('speechStatus').innerHTML = '✅ Text inserted successfully!';
                             document.getElementById('speechStatus').style.color = '#00c851';
 
                             console.log('Text inserted into input field:', targetInput);
+                            debugInfo.push(`✅ FINAL SUCCESS: Text "${{currentSpeechText}}" inserted`);
                         }} else {{
-                            document.getElementById('speechStatus').innerHTML = '⚠️ No input field found. Text: ' + currentSpeechText;
-                            document.getElementById('speechStatus').style.color = '#ff9800';
-                            console.log('No suitable input field found. Debug info:', debugInfo);
+                            // Enhanced fallback with clipboard copy
+                            document.getElementById('speechStatus').innerHTML = '🔄 Auto-insert failed. Trying clipboard...';
+
+                            if (navigator.clipboard && navigator.clipboard.writeText) {{
+                                navigator.clipboard.writeText(currentSpeechText).then(() => {{
+                                    document.getElementById('speechStatus').innerHTML = '✅ Copied to clipboard! Paste with Ctrl+V/Cmd+V';
+                                    document.getElementById('speechStatus').style.color = '#00c851';
+                                }}).catch(err => {{
+                                    console.error('Clipboard failed:', err);
+                                    document.getElementById('speechStatus').innerHTML = '⚠️ Manual copy needed. Text: ' + currentSpeechText;
+                                    document.getElementById('speechStatus').style.color = '#ff9800';
+                                }});
+                            }} else {{
+                                document.getElementById('speechStatus').innerHTML = '⚠️ Manual copy needed. Text: ' + currentSpeechText;
+                                document.getElementById('speechStatus').style.color = '#ff9800';
+                            }}
+
+                            console.log('No input field found. Debug info:', debugInfo);
+
+                            // Show detailed debug info in result area
+                            document.getElementById('speechResult').innerHTML =
+                                '<strong>🔍 Debug Info:</strong><br>' +
+                                debugInfo.join('<br>') +
+                                '<br><br><strong>📋 Text to copy:</strong><br>' +
+                                '<div style="background:#f0f0f0; padding:8px; border-radius:4px; user-select:all; cursor:text;" onclick="this.focus(); document.execCommand(\'selectAll\');">' +
+                                currentSpeechText +
+                                '</div>';
                         }}
                     }}
                 }}
