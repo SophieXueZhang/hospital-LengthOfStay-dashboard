@@ -1762,7 +1762,9 @@ def show_patient_detail(patient_id, df):
                 console.log('✅ Voice script loaded - all functionality embedded in buttons');
                 </script>
 
-                    document.getElementById('speechStatus').innerHTML = '🔍 Checking browser support...';
+                <div style="margin: 10px 0; padding: 15px; background: #f0f2f6; border-radius: 8px;">
+                    <button onclick="
+                        document.getElementById('speechStatus').innerHTML = '🔍 Checking browser support...';
 
                     // Enhanced environment detection for speech recognition
                     console.log('Current protocol:', location.protocol);
