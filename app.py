@@ -879,33 +879,22 @@ def create_web_speech_html(unique_id):
     return html_code
 
 def speak_text_web(text, unique_id):
-    """Use Web Speech API for text-to-speech in browser"""
+    """Use Web Speech API for text-to-speech in browser - simple and reliable"""
     if not text:
-        return False
+        return ""
+
+    # Escape text properly for JavaScript
+    safe_text = text.replace('"', '\\"').replace('\n', ' ').replace('\r', ' ')
 
     html_code = f"""
-    <div id="tts-container-{unique_id}" style="margin: 5px 0;">
+    <div id="tts-container-{unique_id}">
         <script>
-        (function() {{
-            if ('speechSynthesis' in window) {{
-                const utterance = new SpeechSynthesisUtterance("{text.replace('`', '\\\\`')}");
-                utterance.rate = 0.8;
-                utterance.pitch = 1;
-                utterance.volume = 0.8;
-
-                // Try to use a better voice if available
-                const voices = speechSynthesis.getVoices();
-                const preferredVoice = voices.find(voice =>
-                    voice.lang.startsWith('en') &&
-                    (voice.name.includes('Google') || voice.name.includes('Microsoft'))
-                );
-                if (preferredVoice) {{
-                    utterance.voice = preferredVoice;
-                }}
-
-                speechSynthesis.speak(utterance);
-            }}
-        }})();
+        if ('speechSynthesis' in window) {{
+            const utterance = new SpeechSynthesisUtterance("{safe_text}");
+            utterance.rate = 0.9;
+            utterance.volume = 0.8;
+            speechSynthesis.speak(utterance);
+        }}
         </script>
     </div>
     """
@@ -1703,6 +1692,21 @@ def show_patient_detail(patient_id, df):
         if listening_key not in st.session_state:
             st.session_state[listening_key] = False
 
+        # Auto-speak control
+        auto_speak_key = f"auto_speak_enabled_{patient_id}"
+        if auto_speak_key not in st.session_state:
+            st.session_state[auto_speak_key] = True
+
+        col_toggle, col_info = st.columns([3, 1])
+        with col_toggle:
+            auto_speak_enabled = st.checkbox(
+                "🔊 Auto-speak AI responses",
+                value=st.session_state[auto_speak_key],
+                key=f"auto_speak_checkbox_{patient_id}",
+                help="Automatically read AI responses aloud when using voice input"
+            )
+            st.session_state[auto_speak_key] = auto_speak_enabled
+
         # Chat input
         with st.form(key=f"simple_chat_form_{patient_id}", clear_on_submit=True):
             user_input = st.text_input("Ask about this patient...",
@@ -1758,6 +1762,7 @@ def show_patient_detail(patient_id, df):
                 // Global variables for compatibility
                 window.currentRecognition = null;
                 window.currentSpeechText = '';
+                window.speechInputUsed = false;
 
                 console.log('✅ Voice script loaded - all functionality embedded in buttons');
 
@@ -1780,215 +1785,62 @@ def show_patient_detail(patient_id, df):
                         console.log('Using speech result:', window.currentSpeechText);
                         document.getElementById('speechStatus').innerHTML = '🔍 Finding input field...';
 
-                        // Enhanced input field detection with comprehensive strategies
+                        // Mark that speech input was used - key for auto-TTS trigger
+                        window.speechInputUsed = true;
+
+                        // Simple, reliable input detection - no over-engineering
+                        const candidates = document.querySelectorAll('input[type="text"], textarea, input:not([type])');
                         let targetInput = null;
-                        let debugInfo = [];
 
-                        // Log page state for debugging
-                        debugInfo.push(`URL: ${{window.location.href}}`);
-                        debugInfo.push(`Title: ${{document.title}}`);
+                        // Find first suitable input - keep it simple
+                        for (let input of candidates) {{
+                            const rect = input.getBoundingClientRect();
+                            const style = window.getComputedStyle(input);
 
-                        // Strategy 0: Streamlit-specific selectors with comprehensive coverage
-                        if (!targetInput) {{
-                            const streamlitSelectors = [
-                                // Streamlit v1.30+ chat input selectors
-                                'input[data-testid="stTextInput"]',
-                                'textarea[data-testid="stTextArea"]',
-                                'input[data-testid="textInput"]',
-                                'textarea[data-testid="textArea"]',
-                                'div[data-testid="stChatInput"] input',
-                                'div[data-testid="stChatInput"] textarea',
+                            const isVisible = style.display !== 'none' &&
+                                            style.visibility !== 'hidden' &&
+                                            rect.width > 50 && rect.height > 20;
+                            const isUsable = !input.disabled && !input.readOnly;
 
-                                // Streamlit class-based selectors
-                                '.stTextInput input',
-                                '.stTextArea textarea',
-                                '.st-emotion-cache input[type="text"]',
-                                '.st-emotion-cache textarea',
-
-                                // Modern Streamlit selectors
-                                'input[data-baseweb="input"]',
-                                'textarea[data-baseweb="textarea"]',
-
-                                // Any input with chat-related attributes
-                                'input[placeholder*="Ask"]',
-                                'input[placeholder*="Type"]',
-                                'input[placeholder*="Enter"]',
-                                'input[placeholder*="message"]',
-                                'input[placeholder*="question"]',
-                                'textarea[placeholder*="Ask"]',
-                                'textarea[placeholder*="Type"]',
-                                'textarea[placeholder*="Enter"]'
-                            ];
-
-                            for (let selector of streamlitSelectors) {{
-                                const elements = document.querySelectorAll(selector);
-                                if (elements.length > 0) {{
-                                    debugInfo.push(`Selector "${{selector}}": found ${{elements.length}} elements`);
-                                    // Use the last element (most recent/bottom of page)
-                                    targetInput = elements[elements.length - 1];
-                                    debugInfo.push(`✅ Strategy 0 success: Found Streamlit input with "${{selector}}"`);
-                                    break;
-                                }}
+                            if (isVisible && isUsable) {{
+                                targetInput = input;
+                                break; // First match wins - no complex scoring
                             }}
                         }}
-
-                        // Strategy 1: Look for largest visible text input (common for chat interfaces)
-                        if (!targetInput) {{
-                            const allInputs = document.querySelectorAll('input, textarea');
-                            let largestInput = null;
-                            let largestArea = 0;
-
-                            allInputs.forEach((input, index) => {{
-                                const rect = input.getBoundingClientRect();
-                                const style = window.getComputedStyle(input);
-                                const isVisible = style.display !== 'none' &&
-                                                style.visibility !== 'hidden' &&
-                                                rect.width > 0 && rect.height > 0;
-                                const canAcceptText = input.type === 'text' ||
-                                                    input.type === 'search' ||
-                                                    input.tagName.toLowerCase() === 'textarea' ||
-                                                    !input.type;
-
-                                if (isVisible && canAcceptText && !input.disabled && !input.readOnly) {{
-                                    const area = rect.width * rect.height;
-                                    debugInfo.push(`Input ${{index}}: ${{Math.round(rect.width)}}x${{Math.round(rect.height)}} = ${{Math.round(area)}}px², type="${{input.type || 'text'}}", tag="${{input.tagName.toLowerCase()}}"`);
-
-                                    if (area > largestArea) {{
-                                        largestArea = area;
-                                        largestInput = input;
-                                    }}
-                                }}
-                            }});
-
-                            if (largestInput && largestArea > 1000) {{ // Minimum reasonable size
-                                targetInput = largestInput;
-                                debugInfo.push(`✅ Strategy 1 success: Found largest input (${{Math.round(largestArea)}}px²)`);
-                            }}
-                        }}
-
-                        // Strategy 2: Look for inputs by position (bottom of page = likely chat input)
-                        if (!targetInput) {{
-                            const textInputs = document.querySelectorAll('input[type="text"], input:not([type]), textarea');
-                            let bottomInput = null;
-                            let bottomY = -1;
-
-                            textInputs.forEach((input, index) => {{
-                                const rect = input.getBoundingClientRect();
-                                const style = window.getComputedStyle(input);
-                                const isVisible = style.display !== 'none' &&
-                                                style.visibility !== 'hidden' &&
-                                                rect.width > 10 && rect.height > 10;
-
-                                if (isVisible && !input.disabled && !input.readOnly) {{
-                                    const inputBottom = rect.bottom;
-                                    debugInfo.push(`Input ${{index}}: bottom at ${{Math.round(inputBottom)}}px`);
-
-                                    if (inputBottom > bottomY) {{
-                                        bottomY = inputBottom;
-                                        bottomInput = input;
-                                    }}
-                                }}
-                            }});
-
-                            if (bottomInput) {{
-                                targetInput = bottomInput;
-                                debugInfo.push(`✅ Strategy 2 success: Found bottom-most input (y=${{Math.round(bottomY)}})`);
-                            }}
-                        }}
-
-                        // Strategy 3: Any visible text input as last resort
-                        if (!targetInput) {{
-                            const textInputs = document.querySelectorAll('input[type="text"], input:not([type]), textarea');
-                            for (let input of textInputs) {{
-                                const rect = input.getBoundingClientRect();
-                                const style = window.getComputedStyle(input);
-                                const isVisible = style.display !== 'none' &&
-                                                style.visibility !== 'hidden' &&
-                                                rect.width > 0 && rect.height > 0;
-
-                                if (isVisible && !input.disabled && !input.readOnly) {{
-                                    targetInput = input;
-                                    debugInfo.push('✅ Strategy 3 success: Found any visible text input');
-                                    break;
-                                }}
-                            }}
-                        }}
-
-                        console.log('Debug info:', debugInfo);
 
                         if (targetInput) {{
-                            // Clear any existing value
-                            targetInput.value = '';
-
-                            // Set new value
+                            // Simple insertion - no over-engineering
                             targetInput.value = window.currentSpeechText;
                             targetInput.focus();
 
-                            // Comprehensive event triggering for maximum compatibility
-                            const events = [
-                                new Event('focus', {{ bubbles: true }}),
-                                new Event('input', {{ bubbles: true }}),
-                                new Event('change', {{ bubbles: true }}),
-                                new Event('keyup', {{ bubbles: true }}),
-                                new KeyboardEvent('keydown', {{ key: 'Enter', bubbles: true }}),
-                                new Event('blur', {{ bubbles: true }})
-                            ];
+                            // Trigger essential events only
+                            targetInput.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                            targetInput.dispatchEvent(new Event('change', {{ bubbles: true }}));
 
-                            events.forEach(event => {{
-                                try {{
-                                    targetInput.dispatchEvent(event);
-                                }} catch (e) {{
-                                    console.warn('Event dispatch failed:', e);
-                                }}
-                            }});
+                            // Mark input as voice-originated
+                            targetInput.setAttribute('data-voice-input', 'true');
 
-                            // Special handling for React/modern frameworks
-                            try {{
-                                const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-                                    window.HTMLInputElement.prototype, 'value'
-                                ).set;
-                                nativeInputValueSetter.call(targetInput, window.currentSpeechText);
+                            // Store voice input marker in sessionStorage
+                            sessionStorage.setItem('voice_input_used', 'true');
 
-                                const reactEvent = new Event('input', {{ bubbles: true }});
-                                reactEvent.simulated = true;
-                                targetInput.dispatchEvent(reactEvent);
-                            }} catch (e) {{
-                                console.warn('React-style event failed:', e);
-                            }}
-
-                            document.getElementById('speechStatus').innerHTML = '✅ Text inserted successfully!';
+                            document.getElementById('speechStatus').innerHTML = '✅ Text inserted!';
                             document.getElementById('speechStatus').style.color = '#00c851';
 
-                            console.log('Text inserted into input field:', targetInput);
-                            debugInfo.push(`✅ FINAL SUCCESS: Text "${{window.currentSpeechText}}" inserted`);
+                            console.log('Speech text inserted successfully');
                         }} else {{
-                            // Enhanced fallback with clipboard copy
-                            document.getElementById('speechStatus').innerHTML = '🔄 Auto-insert failed. Trying clipboard...';
-
+                            // Fallback to clipboard
                             if (navigator.clipboard && navigator.clipboard.writeText) {{
                                 navigator.clipboard.writeText(window.currentSpeechText).then(() => {{
-                                    document.getElementById('speechStatus').innerHTML = '✅ Copied to clipboard! Paste with Ctrl+V/Cmd+V';
+                                    document.getElementById('speechStatus').innerHTML = '✅ Copied to clipboard!';
                                     document.getElementById('speechStatus').style.color = '#00c851';
-                                }}).catch(err => {{
-                                    console.error('Clipboard failed:', err);
-                                    document.getElementById('speechStatus').innerHTML = '⚠️ Manual copy needed. Text: ' + window.currentSpeechText;
+                                }}).catch(() => {{
+                                    document.getElementById('speechStatus').innerHTML = '⚠️ Manual copy needed';
                                     document.getElementById('speechStatus').style.color = '#ff9800';
                                 }});
                             }} else {{
-                                document.getElementById('speechStatus').innerHTML = '⚠️ Manual copy needed. Text: ' + window.currentSpeechText;
+                                document.getElementById('speechStatus').innerHTML = '⚠️ Manual copy needed';
                                 document.getElementById('speechStatus').style.color = '#ff9800';
                             }}
-
-                            console.log('No input field found. Debug info:', debugInfo);
-
-                            // Show detailed debug info in result area
-                            document.getElementById('speechResult').innerHTML =
-                                '<strong>🔍 Debug Info:</strong><br>' +
-                                debugInfo.join('<br>') +
-                                '<br><br><strong>📋 Text to copy:</strong><br>' +
-                                '<div style="background:#f0f0f0; padding:8px; border-radius:4px; user-select:all; cursor:text;" onclick="this.focus(); document.execCommand(\\'selectAll\\');">' +
-                                window.currentSpeechText +
-                                '</div>';
                         }}
                     }}
                 }};
@@ -2306,11 +2158,10 @@ def show_patient_detail(patient_id, df):
                                 st.info("File analysis ready (audio unavailable)")
                     else:
                         # Cloud environment - use Web Speech API
-                        st.markdown("🔊 **File Analysis Audio:**")
                         file_tts_id = f"file_tts_{patient_id}_{int(time.time())}"
                         file_tts_html = speak_text_web(summary_text, file_tts_id)
-                        components.html(file_tts_html, height=50)
-                        st.success("🔊 File analysis ready with audio")
+                        components.html(file_tts_html, height=0)
+                        st.success("🔊 File analysis complete")
 
                 st.info("You can now ask questions about this file.")
 
@@ -2327,9 +2178,22 @@ def show_patient_detail(patient_id, df):
             # Add user message
             st.session_state[chat_key].append({"role": "user", "content": user_input})
 
-            # Check if this came from voice input via JavaScript
-            voice_from_web = "speechInputUsed" in user_input or len(user_input) > 10  # Simple heuristic
-            if voice_from_web or st.session_state.get(f"auto_speak_{patient_id}", False):
+            # Simple and reliable voice input detection
+            # Use a custom component to check sessionStorage
+            voice_check_html = """
+            <script>
+            const voiceUsed = sessionStorage.getItem('voice_input_used') === 'true';
+            if (voiceUsed) {
+                sessionStorage.removeItem('voice_input_used');
+                document.body.setAttribute('data-voice-input-detected', 'true');
+            }
+            </script>
+            """
+            components.html(voice_check_html, height=0)
+
+            # Check if auto-speak should be enabled for this session
+            auto_speak_enabled = st.session_state.get(f"auto_speak_enabled_{patient_id}", True)
+            if auto_speak_enabled:
                 st.session_state[f"auto_speak_{patient_id}"] = True
 
             # Generate AI response using OpenAI
@@ -2414,8 +2278,7 @@ def show_patient_detail(patient_id, df):
                     # Cloud environment - use Web Speech API
                     tts_session_id = f"tts_{patient_id}_{int(time.time())}"
                     tts_html = speak_text_web(ai_response, tts_session_id)
-                    st.markdown("🔊 **AI Response Audio:**")
-                    components.html(tts_html, height=50)
+                    components.html(tts_html, height=0)  # Hidden component, just for TTS
                 st.session_state[f"auto_speak_{patient_id}"] = False
 
             st.rerun()
