@@ -694,6 +694,8 @@ def show_patient_detail(patient_id, df):
                 st.markdown(f"• **Discharge Date:** {record['discharged']}")
                 st.markdown(f"• **Length of Stay:** {record['lengthofstay']} days")
                 st.markdown(f"• **Facility:** {record['facid']}")
+                if pd.notna(record.get('admission_reason')):
+                    st.markdown(f"• **Reason:** {record['admission_reason']}")
 
                 # Show key medical indicators
                 if pd.notna(record['glucose']):
@@ -1278,11 +1280,11 @@ def show_patient_detail(patient_id, df):
         position: fixed;
         bottom: 30px;
         right: 30px;
-        background-color: white;
-        border: 2px solid #E5E7EB;
+        background-color: #374151;
+        border: none;
         border-radius: 8px;
         padding: 12px 20px;
-        color: #374151;
+        color: white;
         font-size: 14px;
         font-weight: 500;
         cursor: pointer;
@@ -1292,7 +1294,7 @@ def show_patient_detail(patient_id, df):
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
     .floating-chat-btn:hover {
-        border-color: #D1D5DB;
+        background-color: #4B5563;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         transform: translateY(-1px);
     }
@@ -1331,7 +1333,7 @@ def show_patient_detail(patient_id, df):
     }
     </style>
 
-    <div class="floating-chat-btn" onclick="toggleChat()">Chat</div>
+    <div class="floating-chat-btn" onclick="toggleChat()">Let's Chat</div>
 
     <div id="chatModal" class="chat-modal">
         <div class="chat-header">
