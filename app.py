@@ -631,10 +631,10 @@ def generate_patient_response(patient, user_question):
             'blood_urea_nitrogen': patient['bloodureanitro']
         }
         
-        # Create detailed system prompt
-        system_prompt = f"""You are an AI medical assistant helping healthcare professionals analyze patient data. 
-        
-Patient Information:
+        # Create detailed system prompt with enhanced medical context
+        system_prompt = f"""You are a senior medical AI assistant with expertise in clinical medicine, diagnostics, and patient care. Provide comprehensive, evidence-based medical responses.
+
+Patient Profile:
 - Name: {patient_data['name']}
 - ID: {patient_data['id']}
 - Age Group: {patient_data['age_group']}
@@ -643,34 +643,36 @@ Patient Information:
 - Length of Stay: {patient_data['length_of_stay']} days
 - Risk Level: {patient_data['risk_level']}
 
-Current Lab Values & Vitals:
+Laboratory Results & Vitals:
 - Glucose: {patient_data['glucose']:.1f} mg/dL (normal: 70-140)
 - Creatinine: {patient_data['creatinine']:.3f} mg/dL (normal: 0.6-1.2)
 - Hematocrit: {patient_data['hematocrit']:.1f} g/dL (normal: 12-16)
 - Pulse: {patient_data['pulse']} bpm (normal: 60-100)
 - Respiration: {patient_data['respiration']} /min (normal: 12-20)
 - BMI: {patient_data['bmi']:.1f}
-- Sodium: {patient_data['sodium']:.1f} mEq/L
-- Neutrophils: {patient_data['neutrophils']:.1f}%
-- Blood Urea Nitrogen: {patient_data['blood_urea_nitrogen']:.1f} mg/dL
+- Sodium: {patient_data['sodium']:.1f} mEq/L (normal: 136-145)
+- Neutrophils: {patient_data['neutrophils']:.1f}% (normal: 50-70)
+- Blood Urea Nitrogen: {patient_data['blood_urea_nitrogen']:.1f} mg/dL (normal: 7-20)
 
-Guidelines:
-1. Provide concise, clinical responses (2-3 sentences max)
-2. Focus on actionable medical insights
-3. Reference specific lab values when relevant
-4. Use medical terminology appropriately
-5. Suggest next steps when appropriate
-6. If values are abnormal, explain the clinical significance"""
+Clinical Guidelines:
+1. Provide detailed, professional medical analysis
+2. Interpret lab values in clinical context
+3. Suggest differential diagnoses when relevant
+4. Recommend appropriate diagnostic workup or monitoring
+5. Explain medical reasoning clearly
+6. Address patient-specific risk factors
+7. Consider department-specific protocols and standards"""
 
-        # Make API call to OpenAI
+        # Make API call to OpenAI with enhanced parameters
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_question}
             ],
-            max_tokens=200,
-            temperature=0.7
+            max_tokens=600,  # Increased for detailed medical responses
+            temperature=0.6,  # Slightly lower for more consistent medical advice
+            presence_penalty=0.1  # Encourage varied terminology
         )
         
         return response.choices[0].message.content.strip()

@@ -442,7 +442,7 @@ class RAGSystem:
         for paper in relevant_papers:
             # Handle both similarity (vector DB) and score (lightweight DB)
             paper_score = paper.get('similarity', paper.get('score', 0))
-            score_threshold = 0.8 if 'similarity' in paper else 5  # Different thresholds for different systems
+            score_threshold = 0.65 if 'similarity' in paper else 3  # Lowered thresholds for broader matching
 
             if paper_score >= score_threshold and paper['title'] not in seen_titles:
                 # 优先使用数据库中的元数据，如果没有再从文件名提取
@@ -515,7 +515,9 @@ Start directly with the clinical content without any introductory phrases or hea
                     {"role": "system", "content": "You are a medical assistant that answers questions based on provided literature content."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.7
+                max_tokens=800,  # Allow for comprehensive medical responses
+                temperature=0.6,  # Slightly more deterministic for medical content
+                presence_penalty=0.1
             )
             
             ai_response = response.choices[0].message.content
