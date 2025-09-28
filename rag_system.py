@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class RAGSystem:
-    def __init__(self, db_path=None):
+    def __init__(self, db_path=None, api_key=None):
         # Auto-detect database path for different environments
         if db_path is None:
             possible_paths = [
@@ -31,7 +31,9 @@ class RAGSystem:
         else:
             self.db_path = db_path
 
-        self.client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        # Use provided API key or fall back to environment variable
+        self.api_key = api_key or os.getenv('OPENAI_API_KEY')
+        self.client = None  # Initialize later when needed
         
         # Manual paper metadata mapping (fallback for papers without extractable metadata)
         self.paper_metadata_map = {
@@ -73,10 +75,25 @@ class RAGSystem:
         """Check if RAG system is available"""
         return self.db_path is not None and os.path.exists(self.db_path)
 
+    def update_api_key(self, api_key):
+        """Update the API key for OpenAI client"""
+        self.api_key = api_key
+        self.client = None  # Reset client to use new key
+
+    def _get_client(self):
+        """Get or create OpenAI client with current API key"""
+        if self.client is None and self.api_key:
+            self.client = openai.OpenAI(api_key=self.api_key)
+        return self.client
+
     def get_embedding(self, text):
         """Get text embedding"""
         try:
-            response = self.client.embeddings.create(
+            client = self._get_client()
+            if not client:
+                raise Exception("No valid API key available")
+
+            response = client.embeddings.create(
                 model="text-embedding-ada-002",
                 input=text
             )
@@ -488,7 +505,11 @@ Please provide ONLY the clinical conclusions and medical recommendations. Do NOT
 Start directly with the clinical content without any introductory phrases or headers."""
         
         try:
-            response = self.client.chat.completions.create(
+            client = self._get_client()
+            if not client:
+                raise Exception("No valid API key available")
+
+            response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": "You are a medical assistant that answers questions based on provided literature content."},
@@ -503,8 +524,18 @@ Start directly with the clinical content without any introductory phrases or hea
             return ai_response, relevant_papers, diagnostic_info
             
         except Exception as e:
+            error_str = str(e)
             print(f"Failed to generate RAG response: {e}")
-            return None, relevant_papers, diagnostic_info
+
+            # Return specific error message for API key issues
+            if "401" in error_str or "invalid_request_error" in error_str or "Incorrect API key" in error_str:
+                return "❌ **API密钥无效** - 请在侧边栏检查并重新输入正确的OpenAI API密钥", [], []
+            elif "403" in error_str or "insufficient_quota" in error_str:
+                return "❌ **API配额不足** - 您的OpenAI账户余额不足或已达到使用限制", [], []
+            elif "429" in error_str or "rate_limit" in error_str:
+                return "❌ **请求过于频繁** - 请稍等片刻后重试", [], []
+            else:
+                return None, relevant_papers, diagnostic_info
 
 # Global RAG system instance
 rag_system = RAGSystem()

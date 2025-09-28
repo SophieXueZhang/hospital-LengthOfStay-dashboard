@@ -109,3 +109,8 @@ dmypy.json
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# Debug tools - keep out of git
+debug_tools/debug.log
+debug_tools/screenshots/
+debug_tools/*.tmp

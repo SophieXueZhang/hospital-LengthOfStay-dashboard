@@ -584,16 +584,32 @@ def create_chart_template():
 
 def generate_patient_response(patient, user_question):
     """Generate AI response using RAG system or fallback to basic OpenAI API"""
-    
+
     try:
+        # Get API key from session state or environment
+        api_key = None
+        if 'openai_api_key' in st.session_state and st.session_state.openai_api_key:
+            api_key = st.session_state.openai_api_key
+        else:
+            api_key = os.getenv('OPENAI_API_KEY')
+
+        if not api_key:
+            return "Please enter your OpenAI API key in the sidebar to enable AI responses."
+
         # Try RAG system first if available
-        if RAG_AVAILABLE:
+        if RAG_AVAILABLE and rag_system:
+            # Update RAG system with current API key
+            rag_system.update_api_key(api_key)
             rag_response, relevant_papers, diagnostic_info = rag_system.get_rag_response_for_patient(patient, user_question)
             if rag_response:
-                return rag_response
-        
+                # Check if response is an error message
+                if rag_response.startswith("❌"):
+                    return rag_response
+                else:
+                    return rag_response
+
         # Fallback to basic OpenAI response
-        client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        client = openai.OpenAI(api_key=api_key)
         
         # Extract comprehensive patient information
         patient_data = {
@@ -660,11 +676,20 @@ Guidelines:
         return response.choices[0].message.content.strip()
         
     except Exception as e:
-        # Fallback to rule-based response if API fails
-        st.error(f"API Error: {str(e)}")
-        
-        # Simplified fallback response
-        name = patient['full_name']
+        # Check for specific API key errors
+        error_str = str(e)
+        if "401" in error_str or "invalid_request_error" in error_str or "Incorrect API key" in error_str:
+            return "❌ **API密钥无效** - 请在侧边栏检查并重新输入正确的OpenAI API密钥"
+        elif "403" in error_str or "insufficient_quota" in error_str:
+            return "❌ **API配额不足** - 您的OpenAI账户余额不足或已达到使用限制"
+        elif "429" in error_str or "rate_limit" in error_str:
+            return "❌ **请求过于频繁** - 请稍等片刻后重试"
+        else:
+            # General error fallback
+            st.error(f"API Error: {str(e)}")
+
+            # Simplified fallback response
+            name = patient['full_name']
         glucose = patient['glucose']
         creatinine = patient['creatinine']
         risk_level = patient['risk_level']
@@ -1640,11 +1665,13 @@ def show_patient_detail(patient_id, df):
     with st.container():
         col1, col2, col3 = st.columns([8, 1, 1])
         with col3:
-            if st.button("💬 Chat", key=f"chat_toggle_{patient_id}", help="Open AI Assistant"):
-                st.session_state[chat_state_key] = not st.session_state[chat_state_key]
+            # Chat button removed - commented out
+            # if st.button("💬 Chat", key=f"chat_toggle_{patient_id}", help="Open AI Assistant"):
+            #     st.session_state[chat_state_key] = not st.session_state[chat_state_key]
+            pass
 
-    # Show chat interface if toggled
-    if st.session_state[chat_state_key]:
+    # Show chat interface if toggled - DISABLED
+    if False:  # Chat interface disabled - was: st.session_state[chat_state_key]
         st.markdown("---")
         st.markdown(f"### 🤖 AI Medical Assistant")
         st.markdown(f"**Patient:** {patient['full_name']}")
@@ -1797,9 +1824,11 @@ def show_patient_detail(patient_id, df):
                             'input[data-testid="stTextInput"] input',
                             'div[data-testid="stChatInput"] input',
                             'div[data-testid="stTextInput"] input',
+                            'input[placeholder*="Ask about this patient"]',
                             'input[placeholder*="Ask"]',
                             'input[placeholder*="chat" i]',
-                            'textarea[placeholder*="message" i]'
+                            'textarea[placeholder*="message" i]',
+                            'input[aria-label*="Ask about this patient"]'
                         ];
 
                         let streamlitInputs = [];
@@ -1808,14 +1837,24 @@ def show_patient_detail(patient_id, df):
                             streamlitInputs.push(...found);
                         }}
                         console.log('Found Streamlit inputs:', streamlitInputs.length);
-                        if (streamlitInputs.length === 0) {{
-                            // Debug: show all inputs on the page
-                            const allInputs = document.querySelectorAll('input, textarea');
-                            console.log('All inputs on page:', allInputs.length);
-                            allInputs.forEach((input, i) => {{
-                                console.log(`Input ${{i}}:`, input.tagName, input.type, input.placeholder, input.dataset);
+
+                        // Enhanced debugging - always show all inputs for troubleshooting
+                        const allInputs = document.querySelectorAll('input, textarea');
+                        console.log('=== VOICE DEBUG: All inputs on page ===', allInputs.length);
+                        allInputs.forEach((input, i) => {{
+                            const rect = input.getBoundingClientRect();
+                            console.log(`Input ${{i}}:`, {{
+                                tag: input.tagName,
+                                type: input.type,
+                                placeholder: input.placeholder,
+                                id: input.id,
+                                className: input.className,
+                                visible: rect.width > 0 && rect.height > 0,
+                                dataset: input.dataset,
+                                form: input.closest('form') ? 'IN-FORM' : 'NO-FORM',
+                                value: input.value
                             }});
-                        }}
+                        }});
 
                         // Try first input from specific selectors
                         if (streamlitInputs.length > 0) {{
@@ -1865,7 +1904,22 @@ def show_patient_detail(patient_id, df):
                             }}
                         }}
 
-                        // Strategy 4: Streamlit chat message input specifically
+                        // Strategy 4: Streamlit form text input specifically
+                        if (!targetInput) {{
+                            // Look for Streamlit text inputs within forms
+                            const formInputs = document.querySelectorAll('form [data-testid="stTextInput"] input, [data-testid="stForm"] [data-testid="stTextInput"] input');
+                            console.log('Found form text inputs:', formInputs.length);
+                            for (let input of formInputs) {{
+                                const rect = input.getBoundingClientRect();
+                                if (rect.width > 100 && rect.height > 20 && !input.disabled && !input.readOnly) {{
+                                    targetInput = input;
+                                    console.log('Found form text input');
+                                    break;
+                                }}
+                            }}
+                        }}
+
+                        // Strategy 5: Streamlit chat message input specifically
                         if (!targetInput) {{
                             // Look for the Streamlit chat input which often has distinctive styling
                             const chatWidgets = document.querySelectorAll('[data-testid="stChatInput"]');
@@ -1879,7 +1933,62 @@ def show_patient_detail(patient_id, df):
                             }}
                         }}
 
-                        // Strategy 5: Last resort - any visible text input
+                        // Strategy 6: Direct text match approach with multiple attempts
+                        if (!targetInput) {{
+                            console.log('Strategy 6: Searching through all inputs...');
+
+                            // Try multiple times with delays to handle dynamic content
+                            for (let attempt = 0; attempt < 3; attempt++) {{
+                                const allInputs = document.querySelectorAll('input, textarea');
+                                console.log(`Attempt ${{attempt + 1}}: Found ${{allInputs.length}} inputs`);
+
+                                for (let input of allInputs) {{
+                                    const rect = input.getBoundingClientRect();
+
+                                    // Strategy 6a: Exact placeholder match
+                                    if (input.placeholder && input.placeholder.includes('Ask about this patient')) {{
+                                        targetInput = input;
+                                        console.log('✅ Found target by exact placeholder match!');
+                                        break;
+                                    }}
+
+                                    // Strategy 6b: Any "Ask" related placeholder
+                                    if (input.placeholder && input.placeholder.toLowerCase().includes('ask')) {{
+                                        targetInput = input;
+                                        console.log('✅ Found target by "Ask" keyword match!');
+                                        break;
+                                    }}
+
+                                    // Strategy 6c: Text inputs in forms that are currently visible and active
+                                    if ((input.type === 'text' || input.type === '' || input.tagName === 'TEXTAREA') &&
+                                        rect.width > 200 && rect.height > 25 && !input.disabled && !input.readOnly &&
+                                        input.offsetParent !== null) {{ // Check if element is actually visible
+
+                                        console.log('Potential input found:', {{
+                                            placeholder: input.placeholder,
+                                            rect: rect,
+                                            visible: input.offsetParent !== null,
+                                            form: input.closest('form') ? 'IN-FORM' : 'NO-FORM'
+                                        }});
+
+                                        if (!targetInput) {{ // Take first suitable one as fallback
+                                            targetInput = input;
+                                            console.log('Taking this as fallback input');
+                                        }}
+                                    }}
+                                }}
+
+                                if (targetInput) break;
+
+                                // Wait before next attempt
+                                if (attempt < 2) {{
+                                    console.log('No input found, waiting 200ms before next attempt...');
+                                    await new Promise(resolve => setTimeout(resolve, 200));
+                                }}
+                            }}
+                        }}
+
+                        // Strategy 7: Last resort - any visible text input
                         if (!targetInput) {{
                             const allInputs = document.querySelectorAll('input, textarea');
                             for (let input of allInputs) {{
@@ -1899,6 +2008,15 @@ def show_patient_detail(patient_id, df):
                         }}
 
                         if (targetInput) {{
+                            console.log('✅ FOUND TARGET INPUT:', {{
+                                element: targetInput,
+                                placeholder: targetInput.placeholder,
+                                id: targetInput.id,
+                                className: targetInput.className,
+                                type: targetInput.type,
+                                form: targetInput.closest('form') ? 'IN-FORM' : 'NO-FORM'
+                            }});
+
                             // Clear existing content first
                             targetInput.value = '';
                             targetInput.focus();
@@ -1919,34 +2037,48 @@ def show_patient_detail(patient_id, df):
                             // Mark input as voice-originated
                             targetInput.setAttribute('data-voice-input', 'true');
                             sessionStorage.setItem('voice_input_used', 'true');
+                            sessionStorage.setItem('lastSuccessfulVoiceInput', window.currentSpeechText);
 
                             document.getElementById('speechStatus').innerHTML = '✅ Text inserted!';
                             document.getElementById('speechStatus').style.color = '#00c851';
 
                             // Try automatic submission after a short delay
                             if (submitButton) {{
+                                console.log('🚀 Auto-clicking submit button');
                                 setTimeout(() => {{
-                                    console.log('Auto-clicking submit button');
                                     submitButton.click();
                                     document.getElementById('speechStatus').innerHTML = '✅ Text sent!';
                                 }}, 500);
+                            }} else {{
+                                console.log('⚠️ No submit button found for auto-submission');
                             }}
 
-                            console.log('Speech text inserted successfully');
+                            console.log('✅ Speech text inserted successfully:', window.currentSpeechText);
                         }} else {{
-                            console.log('No suitable input found, falling back to clipboard');
-                            // Fallback to clipboard only if no input found
+                            console.error('❌ NO SUITABLE INPUT FOUND!');
+                            console.log('=== VOICE INPUT FAILURE SUMMARY ===');
+                            console.log('Total inputs on page:', allInputs.length);
+                            console.log('Speech text:', window.currentSpeechText);
+                            console.log('All strategies failed to find target input');
+
+                            // Store for manual retrieval
+                            sessionStorage.setItem('pendingVoiceInput', window.currentSpeechText);
+                            sessionStorage.setItem('voiceInputFailureTime', new Date().toISOString());
+
+                            // Simple fallback without popups
                             if (navigator.clipboard && navigator.clipboard.writeText) {{
                                 navigator.clipboard.writeText(window.currentSpeechText).then(() => {{
-                                    document.getElementById('speechStatus').innerHTML = '📋 Copied to clipboard - paste manually';
+                                    document.getElementById('speechStatus').innerHTML = '📋 已复制到剪贴板 - 请粘贴到输入框';
                                     document.getElementById('speechStatus').style.color = '#ff9800';
+                                    console.log('✅ Fallback: Copied to clipboard:', window.currentSpeechText);
                                 }}).catch(() => {{
-                                    document.getElementById('speechStatus').innerHTML = '⚠️ Manual copy needed';
-                                    document.getElementById('speechStatus').style.color = '#ff9800';
+                                    document.getElementById('speechStatus').innerHTML = `⚠️ 语音结果: "${{window.currentSpeechText}}"`;
+                                    document.getElementById('speechStatus').style.color = '#ff4444';
                                 }});
                             }} else {{
-                                document.getElementById('speechStatus').innerHTML = '⚠️ Manual copy needed';
-                                document.getElementById('speechStatus').style.color = '#ff9800';
+                                document.getElementById('speechStatus').innerHTML = `📝 语音结果: "${{window.currentSpeechText}}"`;
+                                document.getElementById('speechStatus').style.color = '#2196F3';
+                                console.log('Voice result for manual copy:', window.currentSpeechText);
                             }}
                         }}
                     }}
@@ -2395,6 +2527,272 @@ def show_patient_detail(patient_id, df):
             st.session_state[chat_state_key] = False
             st.rerun()
 
+    # Bottom chat interface
+    st.markdown("---")
+    st.markdown("### 💬 AI Assistant")
+
+    # Initialize chat for this patient
+    chat_key = f"patient_chat_{patient_id}"
+    if chat_key not in st.session_state:
+        st.session_state[chat_key] = []
+
+    # ChatGPT-style interface CSS
+    st.markdown("""
+    <style>
+    /* ChatGPT-style unified input container */
+    .chat-input-container {
+        background: #F9FAFB;
+        border: 1px solid #D1D5DB;
+        border-radius: 24px;
+        padding: 8px 12px;
+        margin: 16px 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        transition: all 0.2s ease;
+    }
+
+    .chat-input-container:focus-within {
+        border-color: #6B7280;
+        box-shadow: 0 0 0 1px rgba(107, 114, 128, 0.1);
+    }
+
+    /* Hide default streamlit input styling */
+    div[data-testid="stTextInput"] > div > div > input {
+        background: transparent !important;
+        border: none !important;
+        border-radius: 0 !important;
+        padding: 8px 0 !important;
+        font-size: 16px !important;
+        color: #374151 !important;
+        outline: none !important;
+        box-shadow: none !important;
+        flex-grow: 1;
+    }
+
+    div[data-testid="stTextInput"] > div > div {
+        background: transparent !important;
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    /* ChatGPT-style button styling - smaller and integrated */
+    div.stButton > button {
+        background: transparent !important;
+        border: none !important;
+        border-radius: 6px !important;
+        width: 32px !important;
+        height: 32px !important;
+        padding: 0 !important;
+        color: #6B7280 !important;
+        font-size: 16px !important;
+        transition: all 0.15s ease !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        box-shadow: none !important;
+        min-height: auto !important;
+    }
+
+    div.stButton > button:hover {
+        background: #F3F4F6 !important;
+        color: #374151 !important;
+    }
+
+    div.stButton > button:active {
+        background: #E5E7EB !important;
+    }
+
+    /* Plus button styling */
+    div.stButton > button[title="New conversation"] {
+        color: #9CA3AF !important;
+        font-size: 18px !important;
+    }
+
+    /* Voice button styling */
+    div.stButton > button[title="Voice input"] {
+        color: #6B7280 !important;
+        font-size: 16px !important;
+    }
+
+    .chat-message {
+        margin: 12px 0;
+        padding: 16px 20px;
+        border-radius: 18px;
+        line-height: 1.5;
+        max-width: 85%;
+        word-wrap: break-word;
+    }
+
+    .user-message {
+        background: linear-gradient(135deg, #3B82F6, #1D4ED8);
+        color: white;
+        margin-left: auto;
+        text-align: left;
+        box-shadow: 0 2px 12px rgba(59, 130, 246, 0.3);
+    }
+
+    .assistant-message {
+        background: #F8FAFC;
+        color: #1F2937;
+        margin-right: auto;
+        border: 1px solid #E2E8F0;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    /* Chat container improvements */
+    .chat-history {
+        max-height: 400px;
+        overflow-y: auto;
+        padding: 16px 0;
+        margin: 16px 0;
+    }
+
+    /* Custom scrollbar */
+    .chat-history::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .chat-history::-webkit-scrollbar-track {
+        background: #F1F5F9;
+        border-radius: 3px;
+    }
+
+    .chat-history::-webkit-scrollbar-thumb {
+        background: #CBD5E1;
+        border-radius: 3px;
+    }
+
+    .chat-history::-webkit-scrollbar-thumb:hover {
+        background: #94A3B8;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # Chat interface
+    with st.container():
+        # Display chat history with scrollable container
+        if st.session_state[chat_key]:
+            st.markdown('<div class="chat-history">', unsafe_allow_html=True)
+            for message in st.session_state[chat_key]:
+                if message["role"] == "user":
+                    st.markdown(f'<div class="chat-message user-message">{message["content"]}</div>',
+                              unsafe_allow_html=True)
+                else:
+                    st.markdown(f'<div class="chat-message assistant-message">{message["content"]}</div>',
+                              unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            # Welcome message when no chat history
+            st.markdown('''
+            <div class="chat-message assistant-message">
+                👋 Hi! I'm here to help answer questions about this patient's medical record.
+                Ask me anything about their conditions, test results, or treatment recommendations.
+            </div>
+            ''', unsafe_allow_html=True)
+
+        # Input area with direct Enter key support (no form)
+        st.markdown('<div class="chat-input-container">', unsafe_allow_html=True)
+
+        # ChatGPT-style layout: + button | input field | microphone button
+        plus_col, input_col, voice_col = st.columns([1, 12, 1])
+
+        with plus_col:
+            # Plus button for new conversation/attachments (placeholder for now)
+            plus_clicked = st.button("➕", key=f"plus_btn_{patient_id}", help="New conversation")
+
+        with input_col:
+            # Check if we need to set voice text or clear input
+            voice_text_key = f"voice_text_{patient_id}"
+            clear_input_key = f"clear_input_{patient_id}"
+
+            if voice_text_key in st.session_state:
+                # Use voice text and clear it
+                input_value = st.session_state[voice_text_key]
+                del st.session_state[voice_text_key]
+            elif st.session_state.get(clear_input_key, False):
+                # Clear input after sending message
+                input_value = ""
+                st.session_state[clear_input_key] = False
+            else:
+                # Keep current value or empty
+                input_value = st.session_state.get(f"last_input_{patient_id}", "")
+
+            # Use on_change to detect Enter key
+            user_input = st.text_input(
+                "Input",
+                value=input_value,
+                placeholder="Ask anything...",
+                label_visibility="collapsed",
+                key=f"chat_input_{patient_id}",
+                on_change=lambda: st.session_state.update({f"enter_pressed_{patient_id}": True})
+            )
+
+            # Store current input for next render
+            st.session_state[f"last_input_{patient_id}"] = user_input
+
+        with voice_col:
+            voice_clicked = st.button("🎤", key=f"voice_btn_{patient_id}", help="Voice input")
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # Check for Enter key press or button clicks
+        enter_pressed = st.session_state.get(f"enter_pressed_{patient_id}", False)
+
+        # Handle voice button click
+        if voice_clicked:
+            if SPEECH_RECOGNITION_AVAILABLE and IS_LOCAL_ENV:
+                # Local environment - use Python speech recognition
+                with st.spinner("🎧 Listening... Please speak now!"):
+                    recognized_text, error = listen_once()
+                    if recognized_text:
+                        # Store the voice text in a separate session state key
+                        st.session_state[f"voice_text_{patient_id}"] = recognized_text
+                        st.success(f"✅ Recognized: {recognized_text}")
+                        st.rerun()
+                    elif error:
+                        st.error(f"❌ {error}")
+            else:
+                # Cloud/Web environment - use Web Speech API
+                voice_session_id = f"voice_chat_{patient_id}_{int(time.time())}"
+                voice_html = create_web_speech_html(voice_session_id)
+
+                # Display Web Speech API interface
+                st.markdown("### 🎤 Voice Input")
+                components.html(voice_html, height=150)
+
+                # Note for user
+                st.info("💡 Click 'Start Recording' above, speak your message, then click 'Stop Recording'. Then press Enter or click Send.")
+
+        # Handle message sending (Enter key only)
+        if user_input and enter_pressed:
+            # Add user message
+            st.session_state[chat_key].append({"role": "user", "content": user_input})
+
+            # Generate AI response
+            try:
+                ai_response = generate_patient_response(patient, user_input)
+                st.session_state[chat_key].append({"role": "assistant", "content": ai_response})
+            except Exception as e:
+                st.session_state[chat_key].append({
+                    "role": "assistant",
+                    "content": f"I'm sorry, I encountered an error: {str(e)}"
+                })
+
+            # Clear enter flag and rerun
+            st.session_state[f"enter_pressed_{patient_id}"] = False
+            st.session_state[clear_input_key] = True
+            st.rerun()
+
+        # Handle plus button for new conversation
+        if plus_clicked:
+            st.session_state[chat_key] = []
+            st.rerun()
+
 def main():
     # Initialize session state
     if "current_page" not in st.session_state:
@@ -2432,6 +2830,7 @@ def main():
 
         if api_key_input:
             st.session_state.openai_api_key = api_key_input
+            setup_openai_api()  # Update environment variable
             st.success("✅ API key configured")
         elif not api_key_input and 'openai_api_key' not in st.session_state:
             st.info("💡 Enter API key to enable AI features")
@@ -2535,7 +2934,7 @@ def main():
     create_detail_table(filtered_df)
     
     # Add floating chat widget
-    add_floating_chat()
+    # add_floating_chat()  # Commented out - removed floating chat button
 
 def create_kpi_cards(df):
     """Create KPI cards with Nordic styling"""
