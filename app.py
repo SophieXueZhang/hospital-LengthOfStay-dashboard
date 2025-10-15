@@ -2529,7 +2529,7 @@ def show_patient_detail(patient_id, df):
             st.session_state[chat_state_key] = False
             st.rerun()
 
-    # Add patient-specific floating chat widget to detail page
+    # Add patient-specific floating chat widget with voice support
     add_patient_chat(patient)
 
 def main():
@@ -3326,6 +3326,11 @@ def add_floating_chat():
         background: white;
         border: 1px solid #E2E8F0;
     }
+
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.1); opacity: 0.8; }
+    }
     </style>
     </head>
     <body>
@@ -3528,6 +3533,16 @@ def add_patient_chat(patient):
 
     patient_json = json.dumps(patient_data)
 
+    # Get API key from session state or environment variable
+    api_key = ""
+    if 'openai_api_key' in st.session_state and st.session_state.openai_api_key:
+        api_key = st.session_state.openai_api_key
+    else:
+        api_key = os.getenv("OPENAI_API_KEY", "")
+
+    # Check if API key is available for voice features
+    voice_enabled = bool(api_key)
+
     components.html(f"""
     <!DOCTYPE html>
     <html>
@@ -3661,11 +3676,18 @@ def add_patient_chat(patient):
                 Hello! I'm analyzing {patient['full_name']}'s medical record. Ask me anything about this patient's condition, lab results, or care recommendations.
             </div>
         </div>
-        <div class="chat-input-area">
+        <div class="chat-input-area" style="position: relative;">
             <input type="text"
                    id="chat-input"
-                   placeholder="Ask about this patient..."
-                   style="width: 100%; padding: 10px; border: 1px solid #E2E8F0; border-radius: 20px; outline: none;">
+                   placeholder="Ask about patient data, medical terms..."
+                   style="width: 100%; padding: 12px 50px 12px 15px; border: 1px solid #E2E8F0; border-radius: 25px; outline: none; font-size: 14px; box-sizing: border-box;">
+            <button id="voiceBtn" onclick="toggleVoiceInput()"
+                    style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 20px; cursor: pointer; padding: 5px; opacity: 0.6; transition: all 0.3s ease;"
+                    onmouseover="this.style.opacity='1'"
+                    onmouseout="if(!this.classList.contains('recording')) this.style.opacity='0.6'"
+                    title="Voice input (click to speak)">
+                🎤
+            </button>
         </div>
     </div>
 
@@ -3674,7 +3696,7 @@ def add_patient_chat(patient):
     const patientData = {patient_json};
 
     // Chat history management with localStorage
-    const CHAT_STORAGE_KEY = 'patient_chat_' + patientData.name.replace(/\s+/g, '_');
+    const CHAT_STORAGE_KEY = 'patient_chat_' + patientData.name.replace(/\\s+/g, '_');
 
     function loadChatHistory() {{
         try {{
@@ -3845,6 +3867,286 @@ def add_patient_chat(patient):
             return `I can answer questions about ${{p.name}}'s medical record. Try asking about:\\n• Lab results (glucose, creatinine, etc.)\\n• Risk level and readmission history\\n• Care recommendations\\n• Length of stay\\n\\nType "help" for more options or "summary" for an overview.`;
         }}
     }}
+
+    // ========== Web Speech API Voice Input ==========
+    let recognition = null;
+    let isListening = false;
+    let speechSynthesis = window.speechSynthesis;
+
+    // Initialize Web Speech API
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {{
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+
+        recognition.onstart = () => {{
+            isListening = true;
+            const btn = document.getElementById('voiceBtn');
+            btn.classList.add('recording');
+            btn.style.opacity = '1';
+            btn.style.background = 'linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%)';
+            btn.style.borderRadius = '50%';
+            btn.style.padding = '8px';
+            btn.style.animation = 'pulse 1.5s ease-in-out infinite';
+        }};
+
+        recognition.onresult = (event) => {{
+            const transcript = event.results[0][0].transcript;
+            const chatInput = document.getElementById('chat-input');
+            chatInput.value = transcript;
+
+            // Automatically send the message
+            setTimeout(() => {{
+                sendFloatingMessage(transcript);
+                chatInput.value = '';
+            }}, 500);
+        }};
+
+        recognition.onerror = (event) => {{
+            console.error('Speech recognition error:', event.error);
+            stopListening();
+
+            if (event.error === 'not-allowed') {{
+                alert('Microphone access denied. Please allow microphone permission in your browser settings.');
+            }} else if (event.error === 'no-speech') {{
+                alert('No speech detected. Please try again.');
+            }}
+        }};
+
+        recognition.onend = () => {{
+            stopListening();
+        }};
+    }} else {{
+        // Disable voice button if not supported
+        document.getElementById('voiceBtn').style.opacity = '0.3';
+        document.getElementById('voiceBtn').style.cursor = 'not-allowed';
+        document.getElementById('voiceBtn').title = 'Voice input not supported in this browser (use Chrome/Edge)';
+    }}
+
+    function toggleVoiceInput() {{
+        if (!recognition) {{
+            alert('Voice input is not supported in your browser. Please use Chrome or Edge.');
+            return;
+        }}
+
+        if (isListening) {{
+            recognition.stop();
+        }} else {{
+            try {{
+                recognition.start();
+            }} catch (error) {{
+                console.error('Failed to start recognition:', error);
+                alert('Failed to start voice input. Please try again.');
+            }}
+        }}
+    }}
+
+    function stopListening() {{
+        isListening = false;
+        const btn = document.getElementById('voiceBtn');
+        btn.classList.remove('recording');
+        btn.style.opacity = '0.6';
+        btn.style.background = 'none';
+        btn.style.padding = '5px';
+        btn.style.animation = 'none';
+    }}
+
+    // OpenAI API Key
+    const API_KEY = "{api_key}";
+
+    // Clean text for speech (remove emojis, format medical terms)
+    function cleanTextForSpeech(text) {{
+        return text
+            .replace(/⚠️/g, 'Warning:')
+            .replace(/✓/g, 'Normal.')
+            .replace(/•/g, '')
+            .replace(/\\n/g, '. ')
+            .replace(/:/g, ',')
+            .replace(/mg\\/dL/g, 'milligrams per deciliter')
+            .replace(/mEq\\/L/g, 'milliequivalents per liter')
+            .replace(/%/g, ' percent')
+            .replace(/\(/g, ', ')
+            .replace(/\)/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }}
+
+    // Speak using OpenAI TTS API (more natural voice)
+    async function speakWithOpenAI(text) {{
+        if (!API_KEY || API_KEY === '') {{
+            console.log('No API key, falling back to browser speech');
+            speakWithBrowser(text);
+            return;
+        }}
+
+        try {{
+            const cleanText = cleanTextForSpeech(text);
+
+            const response = await fetch('https://api.openai.com/v1/audio/speech', {{
+                method: 'POST',
+                headers: {{
+                    'Authorization': `Bearer ${{API_KEY}}`,
+                    'Content-Type': 'application/json'
+                }},
+                body: JSON.stringify({{
+                    model: 'tts-1-hd',  // High quality TTS model
+                    voice: 'nova',      // nova is warm and friendly for medical context
+                    input: cleanText,
+                    speed: 1.0
+                }})
+            }});
+
+            if (!response.ok) {{
+                throw new Error('TTS API failed');
+            }}
+
+            const audioBlob = await response.blob();
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const audio = new Audio(audioUrl);
+
+            audio.onended = () => {{
+                URL.revokeObjectURL(audioUrl);
+            }};
+
+            audio.play();
+        }} catch (error) {{
+            console.error('OpenAI TTS error:', error);
+            speakWithBrowser(text);
+        }}
+    }}
+
+    // Fallback: Speak using browser's built-in speech synthesis
+    function speakWithBrowser(text) {{
+        if (speechSynthesis) {{
+            speechSynthesis.cancel();
+
+            const cleanText = cleanTextForSpeech(text);
+            const utterance = new SpeechSynthesisUtterance(cleanText);
+            utterance.lang = 'en-US';
+            utterance.rate = 0.9;
+            utterance.pitch = 1.0;
+            utterance.volume = 1.0;
+
+            const voices = speechSynthesis.getVoices();
+            const preferredVoice = voices.find(voice =>
+                voice.name.includes('Samantha') ||
+                voice.name.includes('Google US English') ||
+                voice.name.includes('Microsoft Zira')
+            );
+
+            if (preferredVoice) {{
+                utterance.voice = preferredVoice;
+            }}
+
+            speechSynthesis.speak(utterance);
+        }}
+    }}
+
+    // Main speech function - tries OpenAI first, falls back to browser
+    function speakResponse(text) {{
+        speakWithOpenAI(text);
+    }}
+
+    // Get intelligent response using OpenAI GPT
+    async function getGPTResponse(userMessage) {{
+        if (!API_KEY || API_KEY === '') {{
+            return generatePatientResponse(userMessage);
+        }}
+
+        try {{
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {{
+                method: 'POST',
+                headers: {{
+                    'Authorization': `Bearer ${{API_KEY}}`,
+                    'Content-Type': 'application/json'
+                }},
+                body: JSON.stringify({{
+                    model: 'gpt-4o',
+                    messages: [
+                        {{
+                            role: 'system',
+                            content: `You are a medical AI assistant analyzing patient data. The patient information is:
+Name: ${{patientData.name}}
+Age: ${{patientData.age}} years old
+Gender: ${{patientData.gender}}
+Department: ${{patientData.department}}
+Length of Stay: ${{patientData.los}} days
+Risk Level: ${{patientData.risk}}
+Readmission: ${{patientData.readmit}}
+
+Lab Results:
+- Glucose: ${{patientData.glucose}} mg/dL (normal: 70-100)
+- Creatinine: ${{patientData.creatinine}} mg/dL (normal: 0.6-1.2)
+- Hematocrit: ${{patientData.hematocrit}}% (normal: 38-46% female, 42-54% male)
+- Sodium: ${{patientData.sodium}} mEq/L (normal: 135-145)
+- Blood Urea Nitrogen: ${{patientData.bun}} mg/dL (normal: 7-20)
+
+Provide professional medical analysis, explain lab values, identify abnormalities, and suggest care considerations. Keep responses concise and clear.`
+                        }},
+                        {{ role: 'user', content: userMessage }}
+                    ],
+                    temperature: 0.7,
+                    max_tokens: 300
+                }})
+            }});
+
+            if (!response.ok) {{
+                throw new Error('GPT API failed');
+            }}
+
+            const data = await response.json();
+            return data.choices[0].message.content;
+        }} catch (error) {{
+            console.error('GPT API error:', error);
+            return generatePatientResponse(userMessage);
+        }}
+    }}
+
+    // Override sendFloatingMessage to add GPT and voice response
+    const originalSendMessage = sendFloatingMessage;
+    sendFloatingMessage = async function(message) {{
+        const chatMessages = document.getElementById('chat-messages');
+        const history = loadChatHistory();
+
+        // Add user message to DOM
+        const userMsg = document.createElement('div');
+        userMsg.className = 'message user-message';
+        userMsg.textContent = message;
+        chatMessages.appendChild(userMsg);
+
+        // Save user message to history
+        history.push({{ role: 'user', content: message }});
+        saveChatHistory(history);
+
+        // Add loading indicator
+        const loadingMsg = document.createElement('div');
+        loadingMsg.className = 'message bot-message';
+        loadingMsg.innerHTML = '💭 Analyzing patient data...';
+        loadingMsg.id = 'loading-msg';
+        chatMessages.appendChild(loadingMsg);
+
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        // Get intelligent response from GPT
+        const response = await getGPTResponse(message);
+
+        const loading = document.getElementById('loading-msg');
+        if (loading) {{
+            loading.innerHTML = response;
+            loading.removeAttribute('id');
+
+            // Save bot response to history
+            history.push({{ role: 'assistant', content: response }});
+            saveChatHistory(history);
+
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // Always speak the response with high-quality TTS
+            speakResponse(response);
+        }}
+    }};
     </script>
     </body>
     </html>
@@ -3981,6 +4283,343 @@ def add_chat_widget_DISABLED():
     
     # This function has been disabled - all functionality moved to dynamic JavaScript chat
     pass
+
+def add_patient_voice_chat(patient):
+    """Add patient-specific voice chat using OpenAI Realtime API"""
+    import json
+
+    # Build patient context
+    patient_data = {
+        'name': patient['full_name'],
+        'age': int(patient['age_at_admission']),
+        'gender': 'Male' if patient['gender'] == 'M' else 'Female',
+        'department': patient['facid'],
+        'los': int(patient['lengthofstay']),
+        'glucose': float(patient['glucose']),
+        'creatinine': float(patient['creatinine']),
+        'hematocrit': float(patient['hematocrit']),
+        'sodium': float(patient['sodium']),
+        'bun': float(patient['bloodureanitro']),
+        'risk': patient['risk_level'],
+        'readmit': 'Yes' if patient['readmit_flag'] == 1 else 'No'
+    }
+
+    patient_json = json.dumps(patient_data)
+    api_key = os.getenv("OPENAI_API_KEY", "")
+
+    # Warning about API key security
+    if not api_key:
+        st.warning("⚠️ OpenAI API Key not configured. Voice chat requires an API key in environment variables.")
+        return
+
+    components.html(f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <script src="https://cdn.jsdelivr.net/npm/@openai/realtime-api-beta@0.4.0/dist/index.min.js"></script>
+        <style>
+        .voice-chat-container {{
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 1000;
+        }}
+
+        .voice-btn {{
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 30px;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }}
+
+        .voice-btn:hover {{
+            transform: scale(1.1);
+            box-shadow: 0 6px 30px rgba(102, 126, 234, 0.6);
+        }}
+
+        .voice-btn.recording {{
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            animation: pulse 1.5s ease-in-out infinite;
+        }}
+
+        .voice-btn.connected {{
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }}
+
+        @keyframes pulse {{
+            0%, 100% {{ transform: scale(1); }}
+            50% {{ transform: scale(1.05); }}
+        }}
+
+        .status-indicator {{
+            position: absolute;
+            bottom: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            white-space: nowrap;
+            display: none;
+        }}
+
+        .status-indicator.show {{
+            display: block;
+        }}
+
+        .transcript-box {{
+            position: fixed;
+            bottom: 120px;
+            right: 30px;
+            width: 350px;
+            max-height: 400px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+            padding: 15px;
+            overflow-y: auto;
+            display: none;
+            z-index: 999;
+        }}
+
+        .transcript-box.show {{
+            display: block;
+        }}
+
+        .transcript-item {{
+            margin-bottom: 12px;
+            padding: 8px 12px;
+            border-radius: 12px;
+        }}
+
+        .transcript-item.user {{
+            background: #667eea;
+            color: white;
+            margin-left: 20px;
+        }}
+
+        .transcript-item.assistant {{
+            background: #f0f0f0;
+            margin-right: 20px;
+        }}
+        </style>
+    </head>
+    <body>
+        <div class="voice-chat-container">
+            <button id="voiceBtn" class="voice-btn" onclick="toggleVoice()">
+                🎤
+            </button>
+            <div id="statusIndicator" class="status-indicator">
+                Ready
+            </div>
+        </div>
+
+        <div id="transcriptBox" class="transcript-box">
+            <h4 style="margin-top: 0;">Voice Conversation</h4>
+            <div id="transcriptContent"></div>
+        </div>
+
+        <script>
+        const patientData = {patient_json};
+        const API_KEY = "{api_key}";
+
+        let realtimeClient = null;
+        let isConnected = false;
+        let isRecording = false;
+        let audioContext = null;
+        let mediaStream = null;
+
+        // Initialize OpenAI Realtime Client
+        async function initRealtimeClient() {{
+            try {{
+                // Using the OpenAI Realtime API Beta library
+                const {{ RealtimeClient }} = window.RealtimeAPI;
+
+                realtimeClient = new RealtimeClient({{
+                    apiKey: API_KEY,
+                    dangerouslyAllowAPIKeyInBrowser: true
+                }});
+
+                // Set up system instructions with patient context
+                realtimeClient.updateSession({{
+                    instructions: `You are a medical AI assistant analyzing patient ${{patientData.name}}'s records.
+
+Patient Details:
+- Name: ${{patientData.name}}
+- Age: ${{patientData.age}} years old
+- Gender: ${{patientData.gender}}
+- Department: ${{patientData.department}}
+- Length of Stay: ${{patientData.los}} days
+- Risk Level: ${{patientData.risk}}
+
+Lab Results:
+- Glucose: ${{patientData.glucose}} mg/dL
+- Creatinine: ${{patientData.creatinine}} mg/dL
+- Hematocrit: ${{patientData.hematocrit}}%
+- Sodium: ${{patientData.sodium}} mEq/L
+- BUN: ${{patientData.bun}} mg/dL
+- Readmission: ${{patientData.readmit}}
+
+Provide concise, professional medical insights. Assess abnormal values and suggest care recommendations. Keep responses under 30 seconds.`,
+                    voice: 'alloy',
+                    turn_detection: {{ type: 'server_vad' }}
+                }});
+
+                // Event listeners
+                realtimeClient.on('conversation.updated', handleConversationUpdate);
+                realtimeClient.on('error', handleError);
+
+                await realtimeClient.connect();
+                isConnected = true;
+                updateStatus('Connected', 'connected');
+
+                return true;
+            }} catch (error) {{
+                console.error('Failed to initialize Realtime API:', error);
+                updateStatus('Connection failed', 'error');
+                alert('Failed to connect to OpenAI Realtime API. Check API key and console.');
+                return false;
+            }}
+        }}
+
+        async function toggleVoice() {{
+            if (!isConnected) {{
+                updateStatus('Connecting...', '');
+                const success = await initRealtimeClient();
+                if (!success) return;
+            }}
+
+            if (isRecording) {{
+                stopRecording();
+            }} else {{
+                startRecording();
+            }}
+        }}
+
+        async function startRecording() {{
+            try {{
+                // Get microphone access
+                mediaStream = await navigator.mediaDevices.getUserMedia({{ audio: true }});
+
+                // Create audio context
+                audioContext = new AudioContext({{ sampleRate: 24000 }});
+                const source = audioContext.createMediaStreamSource(mediaStream);
+
+                // Create script processor for audio data
+                const processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+                processor.onaudioprocess = (e) => {{
+                    if (isRecording && realtimeClient) {{
+                        const inputData = e.inputBuffer.getChannelData(0);
+
+                        // Convert Float32Array to Int16Array (PCM16)
+                        const pcm16 = new Int16Array(inputData.length);
+                        for (let i = 0; i < inputData.length; i++) {{
+                            const s = Math.max(-1, Math.min(1, inputData[i]));
+                            pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                        }}
+
+                        // Send to Realtime API
+                        realtimeClient.appendInputAudio(pcm16);
+                    }}
+                }};
+
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+
+                isRecording = true;
+                updateStatus('Listening...', 'recording');
+                document.getElementById('transcriptBox').classList.add('show');
+
+            }} catch (error) {{
+                console.error('Failed to start recording:', error);
+                alert('Microphone access denied or unavailable');
+            }}
+        }}
+
+        function stopRecording() {{
+            isRecording = false;
+
+            if (mediaStream) {{
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }}
+
+            if (audioContext) {{
+                audioContext.close();
+                audioContext = null;
+            }}
+
+            updateStatus('Connected', 'connected');
+        }}
+
+        function handleConversationUpdate(event) {{
+            const items = realtimeClient.conversation.getItems();
+
+            // Update transcript display
+            const transcriptContent = document.getElementById('transcriptContent');
+            transcriptContent.innerHTML = '';
+
+            items.forEach(item => {{
+                if (item.role === 'user' || item.role === 'assistant') {{
+                    const div = document.createElement('div');
+                    div.className = `transcript-item ${{item.role}}`;
+                    div.textContent = item.formatted?.text || item.formatted?.transcript || '...';
+                    transcriptContent.appendChild(div);
+                }}
+            }});
+
+            // Auto-scroll to bottom
+            transcriptContent.scrollTop = transcriptContent.scrollHeight;
+        }}
+
+        function handleError(error) {{
+            console.error('Realtime API error:', error);
+            updateStatus('Error occurred', 'error');
+        }}
+
+        function updateStatus(text, className) {{
+            const btn = document.getElementById('voiceBtn');
+            const indicator = document.getElementById('statusIndicator');
+
+            indicator.textContent = text;
+            indicator.classList.add('show');
+
+            btn.className = 'voice-btn';
+            if (className) {{
+                btn.classList.add(className);
+            }}
+
+            setTimeout(() => {{
+                if (className !== 'recording' && className !== 'connected') {{
+                    indicator.classList.remove('show');
+                }}
+            }}, 2000);
+        }}
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {{
+            if (realtimeClient) {{
+                realtimeClient.disconnect();
+            }}
+        }});
+        </script>
+    </body>
+    </html>
+    """, height=0)
 
 if __name__ == "__main__":
     main()
