@@ -2934,9 +2934,9 @@ def main():
     # Detailed analysis
     st.markdown('<div class="section-header">Patient Details</div>', unsafe_allow_html=True)
     create_detail_table(filtered_df)
-    
-    # Add floating chat widget
-    # add_floating_chat()  # Commented out - removed floating chat button
+
+    # Add floating AI Agent chat widget
+    add_floating_agent_chat()
 
 def create_kpi_cards(df):
     """Create KPI cards with Nordic styling"""
@@ -3446,6 +3446,45 @@ def create_detail_table(df):
                         st.write(row['Risk Count'])
             else:
                 st.info(f"No patients found matching '{search_term}'")
+
+def add_floating_agent_chat():
+    """Add floating AI Agent chat widget using ChatKit to the bottom right corner"""
+    # Streamlit doesn't allow position:fixed in st.markdown, so use components.html with proper height
+    components.html("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body { margin: 0; padding: 0; overflow: hidden; }
+            .chatbot-container {
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                width: 400px;
+                height: 600px;
+                border-radius: 15px;
+                box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+                overflow: hidden;
+                background: white;
+            }
+            .chatbot-container iframe {
+                width: 100%;
+                height: 100%;
+                border: none;
+                border-radius: 15px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="chatbot-container">
+            <iframe
+                src="https://chatkit.openai.com/embed?workflow_id=wf_68e542103dc481909e41a2e7e9e30d100e4dea407d69250a&version=1"
+                allow="microphone"
+            ></iframe>
+        </div>
+    </body>
+    </html>
+    """, height=650, scrolling=False)
 
 def add_floating_chat():
     """Add floating chat widget to the bottom right corner"""
