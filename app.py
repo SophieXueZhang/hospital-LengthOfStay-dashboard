@@ -2935,8 +2935,8 @@ def main():
     st.markdown('<div class="section-header">Patient Details</div>', unsafe_allow_html=True)
     create_detail_table(filtered_df)
 
-    # Add floating AI Agent chat widget
-    add_floating_agent_chat()
+    # AI floating chat widget
+    add_floating_chat()
 
 def create_kpi_cards(df):
     """Create KPI cards with Nordic styling"""
@@ -3448,54 +3448,37 @@ def create_detail_table(df):
                 st.info(f"No patients found matching '{search_term}'")
 
 def add_floating_agent_chat():
-    """Add floating AI Agent chat widget using ChatKit to the bottom right corner"""
-    # Streamlit doesn't allow position:fixed in st.markdown, so use components.html with proper height
+    """Add AI Agent chat widget using ChatKit"""
+    # Create a container with the chatbot
+    st.markdown("""
+    <style>
+    .chatbot-iframe-container {
+        width: 100%;
+        height: 600px;
+        border-radius: 15px;
+        overflow: hidden;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        margin: 20px 0;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # Use components.iframe for cleaner embedding
+    components.iframe(
+        "https://chatkit.openai.com/embed?workflow_id=wf_68e542103dc481909e41a2e7e9e30d100e4dea407d69250a&version=1",
+        height=600,
+        scrolling=False
+    )
+
+def add_floating_chat():
+    """Add floating chat widget to the bottom right corner"""
+    # Use components.html to enable position:fixed
     components.html("""
     <!DOCTYPE html>
     <html>
     <head>
-        <style>
-            body { margin: 0; padding: 0; overflow: hidden; }
-            .chatbot-container {
-                position: fixed;
-                bottom: 20px;
-                right: 20px;
-                width: 400px;
-                height: 600px;
-                border-radius: 15px;
-                box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-                overflow: hidden;
-                background: white;
-            }
-            .chatbot-container iframe {
-                width: 100%;
-                height: 100%;
-                border: none;
-                border-radius: 15px;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="chatbot-container">
-            <iframe
-                src="https://chatkit.openai.com/embed?workflow_id=wf_68e542103dc481909e41a2e7e9e30d100e4dea407d69250a&version=1"
-                allow="microphone"
-            ></iframe>
-        </div>
-    </body>
-    </html>
-    """, height=650, scrolling=False)
-
-def add_floating_chat():
-    """Add floating chat widget to the bottom right corner"""
-    # Initialize session state for floating chat
-    if 'float_chat_visible' not in st.session_state:
-        st.session_state.float_chat_visible = False
-    if 'float_chat_messages' not in st.session_state:
-        st.session_state.float_chat_messages = []
-    
-    # CSS and HTML for floating chat
-    st.markdown("""
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
     /* Floating chat button */
     .floating-chat-btn {
@@ -3607,9 +3590,10 @@ def add_floating_chat():
         border: 1px solid #E2E8F0;
     }
     </style>
-    
+    </head>
+    <body>
     <div id="floating-chat-btn" class="floating-chat-btn" onclick="toggleFloatingChat()">
-        ▸
+        💬
     </div>
     
     <div id="floating-chat-window" class="floating-chat-window">
@@ -3631,16 +3615,58 @@ def add_floating_chat():
     </div>
     
     <script>
+    // Chat history management with localStorage
+    const CHAT_STORAGE_KEY = 'healthcare_chat_history';
+
+    function loadChatHistory() {
+        try {
+            const history = localStorage.getItem(CHAT_STORAGE_KEY);
+            return history ? JSON.parse(history) : [];
+        } catch (e) {
+            console.error('Error loading chat history:', e);
+            return [];
+        }
+    }
+
+    function saveChatHistory(messages) {
+        try {
+            localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
+        } catch (e) {
+            console.error('Error saving chat history:', e);
+        }
+    }
+
+    function clearChatHistory() {
+        localStorage.removeItem(CHAT_STORAGE_KEY);
+        location.reload();
+    }
+
     function toggleFloatingChat() {
         const chatWindow = document.getElementById('floating-chat-window');
         chatWindow.classList.toggle('visible');
     }
-    
-    // Handle chat input
+
+    // Initialize chat on page load
     document.addEventListener('DOMContentLoaded', function() {
         const chatInput = document.getElementById('chat-input');
         const chatMessages = document.getElementById('chat-messages');
-        
+
+        // Load and display chat history
+        const history = loadChatHistory();
+        if (history.length > 0) {
+            // Clear initial welcome message
+            chatMessages.innerHTML = '';
+            // Render all messages from history
+            history.forEach(msg => {
+                const msgDiv = document.createElement('div');
+                msgDiv.className = 'message ' + (msg.role === 'user' ? 'user-message' : 'bot-message');
+                msgDiv.textContent = msg.content;
+                chatMessages.appendChild(msgDiv);
+            });
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Handle Enter key
         if (chatInput) {
             chatInput.addEventListener('keypress', function(e) {
                 if (e.key === 'Enter' && this.value.trim()) {
@@ -3650,52 +3676,77 @@ def add_floating_chat():
             });
         }
     });
-    
+
     function sendFloatingMessage(message) {
         const chatMessages = document.getElementById('chat-messages');
-        
-        // Add user message
+        const history = loadChatHistory();
+
+        // Add user message to DOM
         const userMsg = document.createElement('div');
         userMsg.className = 'message user-message';
         userMsg.textContent = message;
         chatMessages.appendChild(userMsg);
-        
+
+        // Save user message to history
+        history.push({ role: 'user', content: message });
+        saveChatHistory(history);
+
         // Add loading indicator
         const loadingMsg = document.createElement('div');
         loadingMsg.className = 'message bot-message';
-        loadingMsg.innerHTML = 'Thinking...';
+        loadingMsg.innerHTML = '💭 Thinking...';
         loadingMsg.id = 'loading-msg';
         chatMessages.appendChild(loadingMsg);
-        
+
         chatMessages.scrollTop = chatMessages.scrollHeight;
-        
-        // Send to backend (simulate API call for now)
+
+        // Simulate API response
         setTimeout(() => {
             const loading = document.getElementById('loading-msg');
             if (loading) {
-                loading.innerHTML = generateFloatingResponse(message);
+                const response = generateFloatingResponse(message);
+                loading.innerHTML = response;
+                loading.removeAttribute('id');
+
+                // Save bot response to history
+                history.push({ role: 'assistant', content: response });
+                saveChatHistory(history);
+
+                chatMessages.scrollTop = chatMessages.scrollHeight;
             }
-        }, 1500);
+        }, 1000);
     }
-    
+
     function generateFloatingResponse(userMessage) {
-        // Simple response logic - in real implementation this would call the ChatGPT API
         const message = userMessage.toLowerCase();
-        
-        if (message.includes('risk') || message.includes('high risk')) {
+
+        if (message.includes('clear') || message.includes('reset')) {
+            clearChatHistory();
+            return 'Chat history cleared! Reloading...';
+        } else if (message.includes('risk') || message.includes('high risk')) {
             return 'High-risk patients are those with length of stay > 90th percentile or readmission flags. You can filter them using the Risk Level filter in the sidebar.';
         } else if (message.includes('creatinine')) {
             return 'Creatinine levels indicate kidney function. Higher levels may suggest kidney problems. Normal range is typically 0.6-1.2 mg/dL.';
-        } else if (message.includes('length') || message.includes('stay')) {
-            return 'Length of stay is a key metric. Longer stays often indicate complex cases or complications. Our data shows average LOS varies by department and patient condition.';
-        } else if (message.includes('dashboard') || message.includes('help')) {
-            return 'This dashboard shows patient analytics, KPIs, and trends. You can filter by date, gender, department, age group, and risk level. Click patient names to see detailed records.';
+        } else if (message.includes('glucose') || message.includes('blood sugar')) {
+            return 'Glucose levels show blood sugar control. High levels may indicate diabetes risk. Normal fasting range is 70-100 mg/dL.';
+        } else if (message.includes('hematocrit') || message.includes('hct')) {
+            return 'Hematocrit measures red blood cell volume. Low levels may indicate anemia. Normal range: 38-46% (female), 42-54% (male).';
+        } else if (message.includes('length') || message.includes('stay') || message.includes('los')) {
+            return 'Length of stay (LOS) is a key metric. Longer stays often indicate complex cases or complications. Average LOS varies by department and condition severity.';
+        } else if (message.includes('readmit') || message.includes('readmission')) {
+            return 'Readmission rate tracks patients returning within 30 days. High rates may indicate care quality issues or patient compliance problems.';
+        } else if (message.includes('department') || message.includes('dept')) {
+            return 'Different departments show varying patient patterns. You can filter by department in the sidebar to analyze specific units.';
+        } else if (message.includes('dashboard') || message.includes('help') || message.includes('how')) {
+            return 'This dashboard shows patient analytics, KPIs, and trends. Use sidebar filters for: date range, gender, department, age group, and risk level. Click patient names for detailed records. Type "clear" to reset chat.';
         } else {
-            return 'I can help with patient data analysis, medical terms, and dashboard navigation. Try asking about "high risk patients", "creatinine levels", or "length of stay".';
+            return 'I can help analyze patient data, explain medical metrics, and navigate the dashboard. Try asking about: "high risk patients", "creatinine levels", "length of stay", "readmission rates", or type "help" for more info.';
         }
     }
     </script>
-    """, unsafe_allow_html=True)
+    </body>
+    </html>
+    """, height=700, scrolling=False)
 
 @st.cache_data(ttl=300)  # Cache responses for 5 minutes
 def get_chatgpt_response(user_message, context=""):
