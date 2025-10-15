@@ -2529,6 +2529,9 @@ def show_patient_detail(patient_id, df):
             st.session_state[chat_state_key] = False
             st.rerun()
 
+    # Add patient-specific floating chat widget to detail page
+    add_patient_chat(patient)
+
 def main():
     # Initialize session state
     if "current_page" not in st.session_state:
@@ -3477,6 +3480,371 @@ def add_floating_chat():
             return 'I can help analyze patient data, explain medical metrics, and navigate the dashboard. Try asking about: "high risk patients", "creatinine levels", "length of stay", "readmission rates", or type "help" for more info.';
         }
     }
+    </script>
+    </body>
+    </html>
+    """, height=700, scrolling=False)
+
+def add_patient_chat(patient):
+    """Add patient-specific floating chat widget"""
+    # Build patient context for the chatbot
+    patient_context = f"""
+    Patient: {patient['full_name']}
+    Age: {patient['age_at_admission']} years ({patient['age_group']})
+    Gender: {'Male' if patient['gender'] == 'M' else 'Female'}
+    Department: {patient['facid']}
+    Length of Stay: {patient['lengthofstay']} days
+    Admission Date: {patient['vdate']}
+    Discharge Date: {patient['discharged']}
+
+    Lab Results:
+    - Glucose: {patient['glucose']:.1f} mg/dL
+    - Creatinine: {patient['creatinine']:.2f} mg/dL
+    - Hematocrit: {patient['hematocrit']:.1f}%
+    - Sodium: {patient['sodium']:.1f} mEq/L
+    - Blood Urea Nitrogen: {patient['bloodureanitro']:.1f} mg/dL
+
+    Risk Status: {patient['risk_level']}
+    Readmission Flag: {'Yes' if patient['readmit_flag'] == 1 else 'No'}
+    """
+
+    # Encode patient context as base64 to pass to JavaScript
+    import base64
+    import json
+    patient_data = {
+        'name': patient['full_name'],
+        'age': int(patient['age_at_admission']),
+        'gender': 'Male' if patient['gender'] == 'M' else 'Female',
+        'department': patient['facid'],
+        'los': int(patient['lengthofstay']),
+        'glucose': float(patient['glucose']),
+        'creatinine': float(patient['creatinine']),
+        'hematocrit': float(patient['hematocrit']),
+        'sodium': float(patient['sodium']),
+        'bun': float(patient['bloodureanitro']),
+        'risk': patient['risk_level'],
+        'readmit': 'Yes' if patient['readmit_flag'] == 1 else 'No'
+    }
+
+    patient_json = json.dumps(patient_data)
+
+    components.html(f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+    /* Floating chat button */
+    .floating-chat-btn {{
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        width: 60px;
+        height: 60px;
+        background: linear-gradient(135deg, #2E5266, #4A90A4);
+        border-radius: 50%;
+        box-shadow: 0 4px 20px rgba(46, 82, 102, 0.3);
+        cursor: pointer;
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 24px;
+        border: none;
+        transition: all 0.3s ease;
+    }}
+
+    .floating-chat-btn:hover {{
+        transform: scale(1.1);
+        box-shadow: 0 6px 30px rgba(46, 82, 102, 0.4);
+    }}
+
+    /* Floating chat window */
+    .floating-chat-window {{
+        position: fixed;
+        bottom: 100px;
+        right: 30px;
+        width: 350px;
+        height: 500px;
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+        z-index: 1001;
+        display: none;
+        flex-direction: column;
+        border: 1px solid #E2E8F0;
+        overflow: hidden;
+    }}
+
+    .floating-chat-window.visible {{
+        display: flex;
+        animation: slideUp 0.3s ease-out;
+    }}
+
+    @keyframes slideUp {{
+        from {{
+            opacity: 0;
+            transform: translateY(20px);
+        }}
+        to {{
+            opacity: 1;
+            transform: translateY(0);
+        }}
+    }}
+
+    .chat-header {{
+        background: linear-gradient(135deg, #2E5266, #4A90A4);
+        color: white;
+        padding: 15px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-weight: 600;
+    }}
+
+    .chat-close {{
+        cursor: pointer;
+        font-size: 20px;
+        background: none;
+        border: none;
+        color: white;
+        padding: 0;
+    }}
+
+    .chat-messages {{
+        flex: 1;
+        padding: 15px;
+        overflow-y: auto;
+        background: #F8FAFC;
+    }}
+
+    .chat-input-area {{
+        padding: 15px;
+        border-top: 1px solid #E2E8F0;
+        background: white;
+    }}
+
+    .message {{
+        margin-bottom: 12px;
+        padding: 8px 12px;
+        border-radius: 18px;
+        max-width: 80%;
+        word-wrap: break-word;
+    }}
+
+    .user-message {{
+        background: #2E5266;
+        color: white;
+        margin-left: auto;
+    }}
+
+    .bot-message {{
+        background: white;
+        border: 1px solid #E2E8F0;
+    }}
+    </style>
+    </head>
+    <body>
+    <div id="floating-chat-btn" class="floating-chat-btn" onclick="toggleFloatingChat()">
+        💬
+    </div>
+
+    <div id="floating-chat-window" class="floating-chat-window">
+        <div class="chat-header">
+            <span>Patient AI Assistant</span>
+            <button class="chat-close" onclick="toggleFloatingChat()">✕</button>
+        </div>
+        <div class="chat-messages" id="chat-messages">
+            <div class="message bot-message">
+                Hello! I'm analyzing {patient['full_name']}'s medical record. Ask me anything about this patient's condition, lab results, or care recommendations.
+            </div>
+        </div>
+        <div class="chat-input-area">
+            <input type="text"
+                   id="chat-input"
+                   placeholder="Ask about this patient..."
+                   style="width: 100%; padding: 10px; border: 1px solid #E2E8F0; border-radius: 20px; outline: none;">
+        </div>
+    </div>
+
+    <script>
+    // Patient data
+    const patientData = {patient_json};
+
+    // Chat history management with localStorage
+    const CHAT_STORAGE_KEY = 'patient_chat_' + patientData.name.replace(/\s+/g, '_');
+
+    function loadChatHistory() {{
+        try {{
+            const history = localStorage.getItem(CHAT_STORAGE_KEY);
+            return history ? JSON.parse(history) : [];
+        }} catch (e) {{
+            console.error('Error loading chat history:', e);
+            return [];
+        }}
+    }}
+
+    function saveChatHistory(messages) {{
+        try {{
+            localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
+        }} catch (e) {{
+            console.error('Error saving chat history:', e);
+        }}
+    }}
+
+    function clearChatHistory() {{
+        localStorage.removeItem(CHAT_STORAGE_KEY);
+        location.reload();
+    }}
+
+    function toggleFloatingChat() {{
+        const chatWindow = document.getElementById('floating-chat-window');
+        chatWindow.classList.toggle('visible');
+    }}
+
+    // Initialize chat on page load
+    document.addEventListener('DOMContentLoaded', function() {{
+        const chatInput = document.getElementById('chat-input');
+        const chatMessages = document.getElementById('chat-messages');
+
+        // Load and display chat history
+        const history = loadChatHistory();
+        if (history.length > 0) {{
+            // Clear initial welcome message
+            chatMessages.innerHTML = '';
+            // Render all messages from history
+            history.forEach(msg => {{
+                const msgDiv = document.createElement('div');
+                msgDiv.className = 'message ' + (msg.role === 'user' ? 'user-message' : 'bot-message');
+                msgDiv.textContent = msg.content;
+                chatMessages.appendChild(msgDiv);
+            }});
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }}
+
+        // Handle Enter key
+        if (chatInput) {{
+            chatInput.addEventListener('keypress', function(e) {{
+                if (e.key === 'Enter' && this.value.trim()) {{
+                    sendFloatingMessage(this.value.trim());
+                    this.value = '';
+                }}
+            }});
+        }}
+    }});
+
+    function sendFloatingMessage(message) {{
+        const chatMessages = document.getElementById('chat-messages');
+        const history = loadChatHistory();
+
+        // Add user message to DOM
+        const userMsg = document.createElement('div');
+        userMsg.className = 'message user-message';
+        userMsg.textContent = message;
+        chatMessages.appendChild(userMsg);
+
+        // Save user message to history
+        history.push({{ role: 'user', content: message }});
+        saveChatHistory(history);
+
+        // Add loading indicator
+        const loadingMsg = document.createElement('div');
+        loadingMsg.className = 'message bot-message';
+        loadingMsg.innerHTML = '💭 Analyzing patient data...';
+        loadingMsg.id = 'loading-msg';
+        chatMessages.appendChild(loadingMsg);
+
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        // Generate response
+        setTimeout(() => {{
+            const loading = document.getElementById('loading-msg');
+            if (loading) {{
+                const response = generatePatientResponse(message);
+                loading.innerHTML = response;
+                loading.removeAttribute('id');
+
+                // Save bot response to history
+                history.push({{ role: 'assistant', content: response }});
+                saveChatHistory(history);
+
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }}
+        }}, 1000);
+    }}
+
+    function generatePatientResponse(userMessage) {{
+        const msg = userMessage.toLowerCase();
+        const p = patientData;
+
+        if (msg.includes('clear') || msg.includes('reset')) {{
+            clearChatHistory();
+            return 'Chat history cleared! Reloading...';
+        }} else if (msg.includes('name') || msg.includes('who')) {{
+            return `This is ${{p.name}}, a ${{p.age}}-year-old ${{p.gender}} patient currently in ${{p.department}} department.`;
+        }} else if (msg.includes('age')) {{
+            return `${{p.name}} is ${{p.age}} years old.`;
+        }} else if (msg.includes('glucose') || msg.includes('sugar') || msg.includes('blood sugar')) {{
+            let assessment = p.glucose > 140 ? '⚠️ ELEVATED - may indicate diabetes risk' :
+                           p.glucose < 70 ? '⚠️ LOW - hypoglycemia concern' :
+                           '✓ Normal range';
+            return `Glucose level: ${{p.glucose}} mg/dL. ${{assessment}}. Normal fasting range is 70-100 mg/dL.`;
+        }} else if (msg.includes('creatinine') || msg.includes('kidney')) {{
+            let assessment = p.creatinine > 1.2 ? '⚠️ ELEVATED - potential kidney dysfunction' : '✓ Normal range';
+            return `Creatinine level: ${{p.creatinine}} mg/dL. ${{assessment}}. Normal range is 0.6-1.2 mg/dL. Higher levels suggest reduced kidney function.`;
+        }} else if (msg.includes('hematocrit') || msg.includes('hct') || msg.includes('blood count')) {{
+            let assessment = p.hematocrit < 38 ? '⚠️ LOW - possible anemia' :
+                           p.hematocrit > 50 ? '⚠️ HIGH - dehydration or polycythemia concern' :
+                           '✓ Normal range';
+            return `Hematocrit: ${{p.hematocrit}}%. ${{assessment}}. Normal: 38-46% (female), 42-54% (male).`;
+        }} else if (msg.includes('sodium') || msg.includes('na')) {{
+            let assessment = p.sodium < 135 ? '⚠️ LOW (hyponatremia)' :
+                           p.sodium > 145 ? '⚠️ HIGH (hypernatremia)' :
+                           '✓ Normal range';
+            return `Sodium level: ${{p.sodium}} mEq/L. ${{assessment}}. Normal range is 135-145 mEq/L.`;
+        }} else if (msg.includes('bun') || msg.includes('urea')) {{
+            let assessment = p.bun > 20 ? '⚠️ ELEVATED - check kidney function' : '✓ Normal range';
+            return `Blood Urea Nitrogen (BUN): ${{p.bun}} mg/dL. ${{assessment}}. Normal range is 7-20 mg/dL.`;
+        }} else if (msg.includes('lab') || msg.includes('test') || msg.includes('result')) {{
+            return `Lab Results Summary:\\n• Glucose: ${{p.glucose}} mg/dL\\n• Creatinine: ${{p.creatinine}} mg/dL\\n• Hematocrit: ${{p.hematocrit}}%\\n• Sodium: ${{p.sodium}} mEq/L\\n• BUN: ${{p.bun}} mg/dL\\n\\nAsk about specific tests for detailed analysis.`;
+        }} else if (msg.includes('risk') || msg.includes('危险')) {{
+            return `Risk Assessment: ${{p.risk}}. ${{p.risk === 'High Risk' ?
+                'This patient requires close monitoring due to elevated risk factors.' :
+                'Standard monitoring protocols apply.'}}`;
+        }} else if (msg.includes('readmit') || msg.includes('return')) {{
+            return `Readmission History: ${{p.readmit}}. ${{p.readmit === 'Yes' ?
+                '⚠️ This patient has been readmitted before. Consider enhanced discharge planning.' :
+                'No previous readmissions recorded.'}}`;
+        }} else if (msg.includes('stay') || msg.includes('los') || msg.includes('length')) {{
+            let assessment = p.los > 7 ? '⚠️ Extended stay - monitor for complications' :
+                           p.los > 3 ? 'Moderate duration' :
+                           'Short stay';
+            return `Length of Stay: ${{p.los}} days. ${{assessment}}. Patient is in ${{p.department}} department.`;
+        }} else if (msg.includes('department') || msg.includes('where')) {{
+            return `${{p.name}} is currently in the ${{p.department}} department with a length of stay of ${{p.los}} days.`;
+        }} else if (msg.includes('recommend') || msg.includes('suggest') || msg.includes('care')) {{
+            let recommendations = [];
+            if (p.glucose > 140) recommendations.push('Monitor blood glucose levels closely');
+            if (p.creatinine > 1.2) recommendations.push('Consult nephrology for kidney function assessment');
+            if (p.hematocrit < 38) recommendations.push('Investigate potential anemia causes');
+            if (p.los > 7) recommendations.push('Review discharge planning and home care needs');
+            if (p.risk === 'High Risk') recommendations.push('Implement enhanced monitoring protocols');
+
+            if (recommendations.length > 0) {{
+                return 'Care Recommendations:\\n• ' + recommendations.join('\\n• ');
+            }} else {{
+                return 'Continue standard care protocols. All vital indicators are within acceptable ranges.';
+            }}
+        }} else if (msg.includes('summary') || msg.includes('overview')) {{
+            return `Patient Summary:\\n\\n${{p.name}}, ${{p.age}} yr old ${{p.gender}}\\nDepartment: ${{p.department}}\\nLOS: ${{p.los}} days\\nRisk Level: ${{p.risk}}\\n\\nKey Labs:\\n• Glucose: ${{p.glucose}}\\n• Creatinine: ${{p.creatinine}}\\n• Hematocrit: ${{p.hematocrit}}%\\n\\nType 'recommend' for care suggestions.`;
+        }} else if (msg.includes('help')) {{
+            return `I can help you with:\\n• Patient demographics (name, age, gender)\\n• Lab results (glucose, creatinine, hematocrit, sodium, BUN)\\n• Risk assessment\\n• Length of stay analysis\\n• Care recommendations\\n• Overall summary\\n\\nTry: "What are the lab results?" or "Any care recommendations?"`;
+        }} else {{
+            return `I can answer questions about ${{p.name}}'s medical record. Try asking about:\\n• Lab results (glucose, creatinine, etc.)\\n• Risk level and readmission history\\n• Care recommendations\\n• Length of stay\\n\\nType "help" for more options or "summary" for an overview.`;
+        }}
+    }}
     </script>
     </body>
     </html>
